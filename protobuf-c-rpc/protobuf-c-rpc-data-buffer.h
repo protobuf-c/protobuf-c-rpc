@@ -45,6 +45,8 @@ struct _ProtobufCRPCDataBufferFragment
 
 struct _ProtobufCRPCDataBuffer
 {
+  /* For compatibility with message pack_to_buffer functions in libprotobuf-c */
+  ProtobufCBuffer                   base;
   size_t size;
 
   ProtobufCRPCDataBufferFragment    *first_frag;

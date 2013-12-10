@@ -129,7 +129,15 @@ protobuf_c_rpc_data_buffer_cleanup_recycling_bin ()
   G_UNLOCK (recycling_stack);
 #endif
 }
-      
+
+/* For ProtobufCBuffer compatibility */
+static void _append (ProtobufCBuffer *buffer, size_t length, const uint8_t *data)
+{
+   protobuf_c_rpc_data_buffer_append ((ProtobufCRPCDataBuffer *) buffer,
+                                      (const void *) data,
+                                      length);
+}
+
 /* --- Public methods --- */
 /**
  * protobuf_c_rpc_data_buffer_init:
@@ -142,6 +150,7 @@ void
 protobuf_c_rpc_data_buffer_init(ProtobufCRPCDataBuffer *buffer,
                             ProtobufCAllocator *allocator)
 {
+  buffer->base.append = _append;
   buffer->first_frag = buffer->last_frag = NULL;
   buffer->size = 0;
   buffer->allocator = allocator;
