@@ -36,6 +36,7 @@
 # include <malloc.h>
 #endif
 #include <stdlib.h>
+#include "protobuf-c-rpc.h"
 #include "protobuf-c-rpc-data-buffer.h"
 
 #undef TRUE
@@ -43,38 +44,38 @@
 #undef FALSE
 #define FALSE 0
 
-#define PROTOBUF_C_FRAGMENT_DATA_SIZE        4096
-#define PROTOBUF_C_FRAGMENT_DATA(frag)     ((uint8_t*)(((ProtobufCDataBufferFragment*)(frag))+1))
+#define PROTOBUF_C_RPC_FRAGMENT_DATA_SIZE        4096
+#define PROTOBUF_C_RPC_FRAGMENT_DATA(frag)     ((uint8_t*)(((ProtobufCRPCDataBufferFragment*)(frag))+1))
 
-/* --- ProtobufCDataBufferFragment implementation --- */
+/* --- ProtobufCRPCDataBufferFragment implementation --- */
 static inline int 
-protobuf_c_data_buffer_fragment_avail (ProtobufCDataBufferFragment *frag)
+protobuf_c_rpc_data_buffer_fragment_avail (ProtobufCRPCDataBufferFragment *frag)
 {
-  return PROTOBUF_C_FRAGMENT_DATA_SIZE - frag->buf_start - frag->buf_length;
+  return PROTOBUF_C_RPC_FRAGMENT_DATA_SIZE - frag->buf_start - frag->buf_length;
 }
 static inline uint8_t *
-protobuf_c_data_buffer_fragment_start (ProtobufCDataBufferFragment *frag)
+protobuf_c_rpc_data_buffer_fragment_start (ProtobufCRPCDataBufferFragment *frag)
 {
-  return PROTOBUF_C_FRAGMENT_DATA(frag) + frag->buf_start;
+  return PROTOBUF_C_RPC_FRAGMENT_DATA(frag) + frag->buf_start;
 }
 static inline uint8_t *
-protobuf_c_data_buffer_fragment_end (ProtobufCDataBufferFragment *frag)
+protobuf_c_rpc_data_buffer_fragment_end (ProtobufCRPCDataBufferFragment *frag)
 {
-  return PROTOBUF_C_FRAGMENT_DATA(frag) + frag->buf_start + frag->buf_length;
+  return PROTOBUF_C_RPC_FRAGMENT_DATA(frag) + frag->buf_start + frag->buf_length;
 }
 
-/* --- ProtobufCDataBufferFragment recycling --- */
+/* --- ProtobufCRPCDataBufferFragment recycling --- */
 #if BUFFER_RECYCLING
 static int num_recycled = 0;
-static ProtobufCDataBufferFragment* recycling_stack = 0;
+static ProtobufCRPCDataBufferFragment* recycling_stack = 0;
 #endif
 
-static ProtobufCDataBufferFragment *
+static ProtobufCRPCDataBufferFragment *
 new_native_fragment(ProtobufCAllocator *allocator)
 {
-  ProtobufCDataBufferFragment *frag;
+  ProtobufCRPCDataBufferFragment *frag;
 #if !BUFFER_RECYCLING
-  frag = (ProtobufCDataBufferFragment *) allocator->alloc (allocator, BUF_CHUNK_SIZE);
+  frag = (ProtobufCRPCDataBufferFragment *) allocator->alloc (allocator, BUF_CHUNK_SIZE);
 #else  /* optimized (?) */
   if (recycling_stack)
     {
@@ -84,7 +85,7 @@ new_native_fragment(ProtobufCAllocator *allocator)
     }
   else
     {
-      frag = (ProtobufCDataBufferFragment *) g_malloc (BUF_CHUNK_SIZE);
+      frag = (ProtobufCRPCDataBufferFragment *) g_malloc (BUF_CHUNK_SIZE);
     }
 #endif	/* !GSK_DEBUG_BUFFER_ALLOCATIONS */
   frag->buf_start = frag->buf_length = 0;
@@ -96,7 +97,7 @@ new_native_fragment(ProtobufCAllocator *allocator)
 #define recycle(allocator, frag) allocator->free (allocator, frag)
 #else	/* optimized (?) */
 static void
-recycle(ProtobufCDataBufferFragment* frag,
+recycle(ProtobufCRPCDataBufferFragment* frag,
         ProtobufCAllocator *allocator)
 {
   frag->next = recycling_stack;
@@ -107,19 +108,19 @@ recycle(ProtobufCDataBufferFragment* frag,
 
 /* --- Global public methods --- */
 /**
- * protobuf_c_data_buffer_cleanup_recycling_bin:
+ * protobuf_c_rpc_data_buffer_cleanup_recycling_bin:
  * 
  * Free unused buffer fragments.  (Normally some are
  * kept around to reduce strain on the global allocator.)
  */
 void
-protobuf_c_data_buffer_cleanup_recycling_bin ()
+protobuf_c_rpc_data_buffer_cleanup_recycling_bin ()
 {
 #if !GSK_DEBUG_BUFFER_ALLOCATIONS && BUFFER_RECYCLING
   G_LOCK (recycling_stack);
   while (recycling_stack != NULL)
     {
-      ProtobufCDataBufferFragment *next;
+      ProtobufCRPCDataBufferFragment *next;
       next = recycling_stack->next;
       g_free (recycling_stack);
       recycling_stack = next;
@@ -131,14 +132,14 @@ protobuf_c_data_buffer_cleanup_recycling_bin ()
       
 /* --- Public methods --- */
 /**
- * protobuf_c_data_buffer_init:
+ * protobuf_c_rpc_data_buffer_init:
  * @buffer: buffer to initialize (as empty).
  *
  * Construct an empty buffer out of raw memory.
  * (This is equivalent to filling the buffer with 0s)
  */
 void
-protobuf_c_data_buffer_init(ProtobufCDataBuffer *buffer,
+protobuf_c_rpc_data_buffer_init(ProtobufCRPCDataBuffer *buffer,
                             ProtobufCAllocator *allocator)
 {
   buffer->first_frag = buffer->last_frag = NULL;
@@ -148,9 +149,9 @@ protobuf_c_data_buffer_init(ProtobufCDataBuffer *buffer,
 
 #if defined(GSK_DEBUG) || GSK_DEBUG_BUFFER_ALLOCATIONS
 static inline gboolean
-verify_buffer (const ProtobufCDataBuffer *buffer)
+verify_buffer (const ProtobufCRPCDataBuffer *buffer)
 {
-  const ProtobufCDataBufferFragment *frag;
+  const ProtobufCRPCDataBufferFragment *frag;
   size_t total = 0;
   for (frag = buffer->first_frag; frag != NULL; frag = frag->next)
     total += frag->buf_length;
@@ -162,7 +163,7 @@ verify_buffer (const ProtobufCDataBuffer *buffer)
 #endif
 
 /**
- * protobuf_c_data_buffer_append:
+ * protobuf_c_rpc_data_buffer_append:
  * @buffer: the buffer to add data to.  Data is put at the end of the buffer.
  * @data: binary data to add to the buffer.
  * @length: length of @data to add to the buffer.
@@ -170,7 +171,7 @@ verify_buffer (const ProtobufCDataBuffer *buffer)
  * Append data into the buffer.
  */
 void
-protobuf_c_data_buffer_append(ProtobufCDataBuffer    *buffer,
+protobuf_c_rpc_data_buffer_append(ProtobufCRPCDataBuffer    *buffer,
                   const void   *data,
 		  size_t         length)
 {
@@ -182,21 +183,21 @@ protobuf_c_data_buffer_append(ProtobufCDataBuffer    *buffer,
       if (!buffer->last_frag)
 	{
 	  buffer->last_frag = buffer->first_frag = new_native_fragment (buffer->allocator);
-	  avail = protobuf_c_data_buffer_fragment_avail (buffer->last_frag);
+	  avail = protobuf_c_rpc_data_buffer_fragment_avail (buffer->last_frag);
 	}
       else
 	{
-	  avail = protobuf_c_data_buffer_fragment_avail (buffer->last_frag);
+	  avail = protobuf_c_rpc_data_buffer_fragment_avail (buffer->last_frag);
 	  if (avail <= 0)
 	    {
 	      buffer->last_frag->next = new_native_fragment (buffer->allocator);
-	      avail = protobuf_c_data_buffer_fragment_avail (buffer->last_frag);
+	      avail = protobuf_c_rpc_data_buffer_fragment_avail (buffer->last_frag);
 	      buffer->last_frag = buffer->last_frag->next;
 	    }
 	}
       if (avail > length)
 	avail = length;
-      memcpy (protobuf_c_data_buffer_fragment_end (buffer->last_frag), data, avail);
+      memcpy (protobuf_c_rpc_data_buffer_fragment_end (buffer->last_frag), data, avail);
       data = (const char *) data + avail;
       length -= avail;
       buffer->last_frag->buf_length += avail;
@@ -205,7 +206,7 @@ protobuf_c_data_buffer_append(ProtobufCDataBuffer    *buffer,
 }
 
 void
-protobuf_c_data_buffer_append_repeated_char (ProtobufCDataBuffer    *buffer, 
+protobuf_c_rpc_data_buffer_append_repeated_char (ProtobufCRPCDataBuffer    *buffer, 
                                  char          character,
                                  size_t        count)
 {
@@ -217,21 +218,21 @@ protobuf_c_data_buffer_append_repeated_char (ProtobufCDataBuffer    *buffer,
       if (!buffer->last_frag)
 	{
 	  buffer->last_frag = buffer->first_frag = new_native_fragment (buffer->allocator);
-	  avail = protobuf_c_data_buffer_fragment_avail (buffer->last_frag);
+	  avail = protobuf_c_rpc_data_buffer_fragment_avail (buffer->last_frag);
 	}
       else
 	{
-	  avail = protobuf_c_data_buffer_fragment_avail (buffer->last_frag);
+	  avail = protobuf_c_rpc_data_buffer_fragment_avail (buffer->last_frag);
 	  if (avail <= 0)
 	    {
 	      buffer->last_frag->next = new_native_fragment (buffer->allocator);
-	      avail = protobuf_c_data_buffer_fragment_avail (buffer->last_frag);
+	      avail = protobuf_c_rpc_data_buffer_fragment_avail (buffer->last_frag);
 	      buffer->last_frag = buffer->last_frag->next;
 	    }
 	}
       if (avail > count)
 	avail = count;
-      memset (protobuf_c_data_buffer_fragment_end (buffer->last_frag), character, avail);
+      memset (protobuf_c_rpc_data_buffer_fragment_end (buffer->last_frag), character, avail);
       count -= avail;
       buffer->last_frag->buf_length += avail;
     }
@@ -240,7 +241,7 @@ protobuf_c_data_buffer_append_repeated_char (ProtobufCDataBuffer    *buffer,
 
 #if 0
 void
-protobuf_c_data_buffer_append_repeated_data (ProtobufCDataBuffer    *buffer, 
+protobuf_c_rpc_data_buffer_append_repeated_data (ProtobufCRPCDataBuffer    *buffer, 
                                  gconstpointer data_to_repeat,
                                  gsize         data_length,
                                  gsize         count)
@@ -250,7 +251,7 @@ protobuf_c_data_buffer_append_repeated_data (ProtobufCDataBuffer    *buffer,
 #endif
 
 /**
- * protobuf_c_data_buffer_append_string:
+ * protobuf_c_rpc_data_buffer_append_string:
  * @buffer: the buffer to add data to.  Data is put at the end of the buffer.
  * @string: NUL-terminated string to append to the buffer.
  *  The NUL is not appended.
@@ -258,29 +259,29 @@ protobuf_c_data_buffer_append_repeated_data (ProtobufCDataBuffer    *buffer,
  * Append a string to the buffer.
  */
 void
-protobuf_c_data_buffer_append_string(ProtobufCDataBuffer  *buffer,
+protobuf_c_rpc_data_buffer_append_string(ProtobufCRPCDataBuffer  *buffer,
                          const char *string)
 {
   assert (string != NULL);
-  protobuf_c_data_buffer_append (buffer, string, strlen (string));
+  protobuf_c_rpc_data_buffer_append (buffer, string, strlen (string));
 }
 
 /**
- * protobuf_c_data_buffer_append_char:
+ * protobuf_c_rpc_data_buffer_append_char:
  * @buffer: the buffer to add the byte to.
  * @character: the byte to add to the buffer.
  *
  * Append a byte to a buffer.
  */
 void
-protobuf_c_data_buffer_append_char(ProtobufCDataBuffer *buffer,
+protobuf_c_rpc_data_buffer_append_char(ProtobufCRPCDataBuffer *buffer,
 		       char       character)
 {
-  protobuf_c_data_buffer_append (buffer, &character, 1);
+  protobuf_c_rpc_data_buffer_append (buffer, &character, 1);
 }
 
 /**
- * protobuf_c_data_buffer_append_string0:
+ * protobuf_c_rpc_data_buffer_append_string0:
  * @buffer: the buffer to add data to.  Data is put at the end of the buffer.
  * @string: NUL-terminated string to append to the buffer;
  *  NUL is appended.
@@ -288,14 +289,14 @@ protobuf_c_data_buffer_append_char(ProtobufCDataBuffer *buffer,
  * Append a NUL-terminated string to the buffer.  The NUL is appended.
  */
 void
-protobuf_c_data_buffer_append_string0      (ProtobufCDataBuffer    *buffer,
+protobuf_c_rpc_data_buffer_append_string0      (ProtobufCRPCDataBuffer    *buffer,
 				const char   *string)
 {
-  protobuf_c_data_buffer_append (buffer, string, strlen (string) + 1);
+  protobuf_c_rpc_data_buffer_append (buffer, string, strlen (string) + 1);
 }
 
 /**
- * protobuf_c_data_buffer_read:
+ * protobuf_c_rpc_data_buffer_read:
  * @buffer: the buffer to read data from.
  * @data: buffer to fill with up to @max_length bytes of data.
  * @max_length: maximum number of bytes to read.
@@ -307,7 +308,7 @@ protobuf_c_data_buffer_append_string0      (ProtobufCDataBuffer    *buffer,
  * returns: number of bytes transferred.
  */
 size_t
-protobuf_c_data_buffer_read(ProtobufCDataBuffer    *buffer,
+protobuf_c_rpc_data_buffer_read(ProtobufCRPCDataBuffer    *buffer,
                 void         *data,
 		size_t         max_length)
 {
@@ -316,10 +317,10 @@ protobuf_c_data_buffer_read(ProtobufCDataBuffer    *buffer,
   CHECK_INTEGRITY (buffer);
   while (max_length > 0 && buffer->first_frag)
     {
-      ProtobufCDataBufferFragment *first = buffer->first_frag;
+      ProtobufCRPCDataBufferFragment *first = buffer->first_frag;
       if (first->buf_length <= max_length)
 	{
-	  memcpy (data, protobuf_c_data_buffer_fragment_start (first), first->buf_length);
+	  memcpy (data, protobuf_c_rpc_data_buffer_fragment_start (first), first->buf_length);
 	  rv += first->buf_length;
 	  data = (char *) data + first->buf_length;
 	  max_length -= first->buf_length;
@@ -330,7 +331,7 @@ protobuf_c_data_buffer_read(ProtobufCDataBuffer    *buffer,
 	}
       else
 	{
-	  memcpy (data, protobuf_c_data_buffer_fragment_start (first), max_length);
+	  memcpy (data, protobuf_c_rpc_data_buffer_fragment_start (first), max_length);
 	  rv += max_length;
 	  first->buf_length -= max_length;
 	  first->buf_start += max_length;
@@ -345,7 +346,7 @@ protobuf_c_data_buffer_read(ProtobufCDataBuffer    *buffer,
 }
 
 /**
- * protobuf_c_data_buffer_peek:
+ * protobuf_c_rpc_data_buffer_peek:
  * @buffer: the buffer to peek data from the front of.
  *    This buffer is unchanged by the operation.
  * @data: buffer to fill with up to @max_length bytes of data.
@@ -355,24 +356,24 @@ protobuf_c_data_buffer_read(ProtobufCDataBuffer    *buffer,
  * and writes it to @data.  The number of bytes actually copied
  * is returned.
  *
- * This function is just like protobuf_c_data_buffer_read() except that the 
+ * This function is just like protobuf_c_rpc_data_buffer_read() except that the 
  * data is not removed from the buffer.
  *
  * returns: number of bytes copied into data.
  */
 size_t
-protobuf_c_data_buffer_peek     (const ProtobufCDataBuffer *buffer,
+protobuf_c_rpc_data_buffer_peek     (const ProtobufCRPCDataBuffer *buffer,
                      void            *data,
 		     size_t            max_length)
 {
   int rv = 0;
-  ProtobufCDataBufferFragment *frag = (ProtobufCDataBufferFragment *) buffer->first_frag;
+  ProtobufCRPCDataBufferFragment *frag = (ProtobufCRPCDataBufferFragment *) buffer->first_frag;
   CHECK_INTEGRITY (buffer);
   while (max_length > 0 && frag)
     {
       if (frag->buf_length <= max_length)
 	{
-	  memcpy (data, protobuf_c_data_buffer_fragment_start (frag), frag->buf_length);
+	  memcpy (data, protobuf_c_rpc_data_buffer_fragment_start (frag), frag->buf_length);
 	  rv += frag->buf_length;
 	  data = (char *) data + frag->buf_length;
 	  max_length -= frag->buf_length;
@@ -380,7 +381,7 @@ protobuf_c_data_buffer_peek     (const ProtobufCDataBuffer *buffer,
 	}
       else
 	{
-	  memcpy (data, protobuf_c_data_buffer_fragment_start (frag), max_length);
+	  memcpy (data, protobuf_c_rpc_data_buffer_fragment_start (frag), max_length);
 	  rv += max_length;
 	  data = (char *) data + max_length;
 	  max_length = 0;
@@ -390,7 +391,7 @@ protobuf_c_data_buffer_peek     (const ProtobufCDataBuffer *buffer,
 }
 
 /**
- * protobuf_c_data_buffer_read_line:
+ * protobuf_c_rpc_data_buffer_read_line:
  * @buffer: buffer to read a line from.
  *
  * Parse a newline (\n) terminated line from
@@ -402,16 +403,16 @@ protobuf_c_data_buffer_peek     (const ProtobufCDataBuffer *buffer,
  * returns: a newly allocated NUL-terminated string, or NULL.
  */
 char *
-protobuf_c_data_buffer_read_line(ProtobufCDataBuffer *buffer)
+protobuf_c_rpc_data_buffer_read_line(ProtobufCRPCDataBuffer *buffer)
 {
   int len = 0;
   char *rv;
-  ProtobufCDataBufferFragment *at;
+  ProtobufCRPCDataBufferFragment *at;
   int newline_length;
   CHECK_INTEGRITY (buffer);
   for (at = buffer->first_frag; at; at = at->next)
     {
-      uint8_t *start = protobuf_c_data_buffer_fragment_start (at);
+      uint8_t *start = protobuf_c_rpc_data_buffer_fragment_start (at);
       uint8_t *got;
       got = memchr (start, '\n', at->buf_length);
       if (got)
@@ -430,14 +431,14 @@ protobuf_c_data_buffer_read_line(ProtobufCDataBuffer *buffer)
     newline_length = 1;
   else
     newline_length = 0;
-  protobuf_c_data_buffer_read (buffer, rv, len + newline_length);
+  protobuf_c_rpc_data_buffer_read (buffer, rv, len + newline_length);
   rv[len] = 0;
   CHECK_INTEGRITY (buffer);
   return rv;
 }
 
 /**
- * protobuf_c_data_buffer_parse_string0:
+ * protobuf_c_rpc_data_buffer_parse_string0:
  * @buffer: buffer to read a line from.
  *
  * Parse a NUL-terminated line from
@@ -448,19 +449,19 @@ protobuf_c_data_buffer_read_line(ProtobufCDataBuffer *buffer)
  * returns: a newly allocated NUL-terminated string, or NULL.
  */
 char *
-protobuf_c_data_buffer_parse_string0(ProtobufCDataBuffer *buffer)
+protobuf_c_rpc_data_buffer_parse_string0(ProtobufCRPCDataBuffer *buffer)
 {
-  int index0 = protobuf_c_data_buffer_index_of (buffer, '\0');
+  int index0 = protobuf_c_rpc_data_buffer_index_of (buffer, '\0');
   char *rv;
   if (index0 < 0)
     return NULL;
   rv = buffer->allocator->alloc (buffer->allocator, index0 + 1);
-  protobuf_c_data_buffer_read (buffer, rv, index0 + 1);
+  protobuf_c_rpc_data_buffer_read (buffer, rv, index0 + 1);
   return rv;
 }
 
 /**
- * protobuf_c_data_buffer_peek_char:
+ * protobuf_c_rpc_data_buffer_peek_char:
  * @buffer: buffer to peek a single byte from.
  *
  * Get the first byte in the buffer as a positive or 0 number.
@@ -470,9 +471,9 @@ protobuf_c_data_buffer_parse_string0(ProtobufCDataBuffer *buffer)
  * returns: an unsigned character or -1.
  */
 int
-protobuf_c_data_buffer_peek_char(const ProtobufCDataBuffer *buffer)
+protobuf_c_rpc_data_buffer_peek_char(const ProtobufCRPCDataBuffer *buffer)
 {
-  const ProtobufCDataBufferFragment *frag;
+  const ProtobufCRPCDataBufferFragment *frag;
 
   if (buffer->size == 0)
     return -1;
@@ -480,11 +481,11 @@ protobuf_c_data_buffer_peek_char(const ProtobufCDataBuffer *buffer)
   for (frag = buffer->first_frag; frag; frag = frag->next)
     if (frag->buf_length > 0)
       break;
-  return * protobuf_c_data_buffer_fragment_start ((ProtobufCDataBufferFragment*)frag);
+  return * protobuf_c_rpc_data_buffer_fragment_start ((ProtobufCRPCDataBufferFragment*)frag);
 }
 
 /**
- * protobuf_c_data_buffer_read_char:
+ * protobuf_c_rpc_data_buffer_read_char:
  * @buffer: buffer to read a single byte from.
  *
  * Get the first byte in the buffer as a positive or 0 number,
@@ -494,16 +495,16 @@ protobuf_c_data_buffer_peek_char(const ProtobufCDataBuffer *buffer)
  * returns: an unsigned character or -1.
  */
 int
-protobuf_c_data_buffer_read_char (ProtobufCDataBuffer *buffer)
+protobuf_c_rpc_data_buffer_read_char (ProtobufCRPCDataBuffer *buffer)
 {
   char c;
-  if (protobuf_c_data_buffer_read (buffer, &c, 1) == 0)
+  if (protobuf_c_rpc_data_buffer_read (buffer, &c, 1) == 0)
     return -1;
   return (int) (uint8_t) c;
 }
 
 /**
- * protobuf_c_data_buffer_discard:
+ * protobuf_c_rpc_data_buffer_discard:
  * @buffer: the buffer to discard data from.
  * @max_discard: maximum number of bytes to discard.
  *
@@ -513,14 +514,14 @@ protobuf_c_data_buffer_read_char (ProtobufCDataBuffer *buffer)
  * returns: number of bytes discarded.
  */
 size_t
-protobuf_c_data_buffer_discard(ProtobufCDataBuffer *buffer,
+protobuf_c_rpc_data_buffer_discard(ProtobufCRPCDataBuffer *buffer,
                    size_t      max_discard)
 {
   int rv = 0;
   CHECK_INTEGRITY (buffer);
   while (max_discard > 0 && buffer->first_frag)
     {
-      ProtobufCDataBufferFragment *first = buffer->first_frag;
+      ProtobufCRPCDataBufferFragment *first = buffer->first_frag;
       if (first->buf_length <= max_discard)
 	{
 	  rv += first->buf_length;
@@ -555,7 +556,7 @@ errno_is_ignorable (int e)
 
 #if HAVE_SYS_UIO_H
 /**
- * protobuf_c_data_buffer_writev:
+ * protobuf_c_rpc_data_buffer_writev:
  * @read_from: buffer to take data from.
  * @fd: file-descriptor to write data to.
  *
@@ -568,13 +569,13 @@ errno_is_ignorable (int e)
  * or -1 on a write error (consult errno).
  */
 int
-protobuf_c_data_buffer_writev (ProtobufCDataBuffer       *read_from,
+protobuf_c_rpc_data_buffer_writev (ProtobufCRPCDataBuffer       *read_from,
 		   int              fd)
 {
   int rv;
   struct iovec *iov;
   int nfrag, i;
-  ProtobufCDataBufferFragment *frag_at = read_from->first_frag;
+  ProtobufCRPCDataBufferFragment *frag_at = read_from->first_frag;
   CHECK_INTEGRITY (read_from);
   for (nfrag = 0; frag_at != NULL
 #ifdef MAX_FRAGMENTS_TO_WRITE
@@ -587,7 +588,7 @@ protobuf_c_data_buffer_writev (ProtobufCDataBuffer       *read_from,
   for (i = 0; i < nfrag; i++)
     {
       iov[i].iov_len = frag_at->buf_length;
-      iov[i].iov_base = protobuf_c_data_buffer_fragment_start (frag_at);
+      iov[i].iov_base = protobuf_c_rpc_data_buffer_fragment_start (frag_at);
       frag_at = frag_at->next;
     }
   rv = writev (fd, iov, nfrag);
@@ -595,14 +596,14 @@ protobuf_c_data_buffer_writev (ProtobufCDataBuffer       *read_from,
     return 0;
   if (rv <= 0)
     return rv;
-  protobuf_c_data_buffer_discard (read_from, rv);
+  protobuf_c_rpc_data_buffer_discard (read_from, rv);
   return rv;
 }
 #endif
 
 #if HAVE_SYS_UIO_H
 /**
- * protobuf_c_data_buffer_writev_len:
+ * protobuf_c_rpc_data_buffer_writev_len:
  * @read_from: buffer to take data from.
  * @fd: file-descriptor to write data to.
  * @max_bytes: maximum number of bytes to write.
@@ -618,7 +619,7 @@ protobuf_c_data_buffer_writev (ProtobufCDataBuffer       *read_from,
 #undef MIN
 #define MIN(a,b)   ((a) < (b) ? (a) : (b))
 int
-protobuf_c_data_buffer_writev_len (ProtobufCDataBuffer *read_from,
+protobuf_c_rpc_data_buffer_writev_len (ProtobufCRPCDataBuffer *read_from,
 		       int        fd,
 		       size_t      max_bytes)
 {
@@ -626,7 +627,7 @@ protobuf_c_data_buffer_writev_len (ProtobufCDataBuffer *read_from,
   struct iovec *iov;
   int nfrag, i;
   size_t bytes;
-  ProtobufCDataBufferFragment *frag_at = read_from->first_frag;
+  ProtobufCRPCDataBufferFragment *frag_at = read_from->first_frag;
   CHECK_INTEGRITY (read_from);
   for (nfrag = 0, bytes = 0; frag_at != NULL && bytes < max_bytes
 #ifdef MAX_FRAGMENTS_TO_WRITE
@@ -643,7 +644,7 @@ protobuf_c_data_buffer_writev_len (ProtobufCDataBuffer *read_from,
     {
       size_t frag_bytes = MIN (frag_at->buf_length, bytes);
       iov[i].iov_len = frag_bytes;
-      iov[i].iov_base = protobuf_c_data_buffer_fragment_start (frag_at);
+      iov[i].iov_base = protobuf_c_rpc_data_buffer_fragment_start (frag_at);
       frag_at = frag_at->next;
       bytes -= frag_bytes;
     }
@@ -652,13 +653,13 @@ protobuf_c_data_buffer_writev_len (ProtobufCDataBuffer *read_from,
     return 0;
   if (rv <= 0)
     return rv;
-  protobuf_c_data_buffer_discard (read_from, rv);
+  protobuf_c_rpc_data_buffer_discard (read_from, rv);
   return rv;
 }
 #endif
 
 /**
- * protobuf_c_data_buffer_read_in_fd:
+ * protobuf_c_rpc_data_buffer_read_in_fd:
  * @write_to: buffer to append data to.
  * @read_from: file-descriptor to read data from.
  *
@@ -670,19 +671,19 @@ protobuf_c_data_buffer_writev_len (ProtobufCDataBuffer *read_from,
  */
 /* TODO: zero-copy! */
 int
-protobuf_c_data_buffer_read_in_fd(ProtobufCDataBuffer *write_to,
+protobuf_c_rpc_data_buffer_read_in_fd(ProtobufCRPCDataBuffer *write_to,
                       int        read_from)
 {
   char buf[8192];
   int rv = read (read_from, buf, sizeof (buf));
   if (rv < 0)
     return rv;
-  protobuf_c_data_buffer_append (write_to, buf, rv);
+  protobuf_c_rpc_data_buffer_append (write_to, buf, rv);
   return rv;
 }
 
 /**
- * protobuf_c_data_buffer_destruct:
+ * protobuf_c_rpc_data_buffer_destruct:
  * @to_destroy: the buffer to empty.
  *
  * Remove all fragments from a buffer, leaving it empty.
@@ -690,13 +691,13 @@ protobuf_c_data_buffer_read_in_fd(ProtobufCDataBuffer *write_to,
  * but it also is allowed to start using it again.
  */
 void
-protobuf_c_data_buffer_reset(ProtobufCDataBuffer *to_destroy)
+protobuf_c_rpc_data_buffer_reset(ProtobufCRPCDataBuffer *to_destroy)
 {
-  ProtobufCDataBufferFragment *at = to_destroy->first_frag;
+  ProtobufCRPCDataBufferFragment *at = to_destroy->first_frag;
   CHECK_INTEGRITY (to_destroy);
   while (at)
     {
-      ProtobufCDataBufferFragment *next = at->next;
+      ProtobufCRPCDataBufferFragment *next = at->next;
       recycle (to_destroy->allocator, at);
       at = next;
     }
@@ -705,20 +706,20 @@ protobuf_c_data_buffer_reset(ProtobufCDataBuffer *to_destroy)
 }
 
 void
-protobuf_c_data_buffer_clear(ProtobufCDataBuffer *to_destroy)
+protobuf_c_rpc_data_buffer_clear(ProtobufCRPCDataBuffer *to_destroy)
 {
-  ProtobufCDataBufferFragment *at = to_destroy->first_frag;
+  ProtobufCRPCDataBufferFragment *at = to_destroy->first_frag;
   CHECK_INTEGRITY (to_destroy);
   while (at)
     {
-      ProtobufCDataBufferFragment *next = at->next;
+      ProtobufCRPCDataBufferFragment *next = at->next;
       recycle (to_destroy->allocator, at);
       at = next;
     }
 }
 
 /**
- * protobuf_c_data_buffer_index_of:
+ * protobuf_c_rpc_data_buffer_index_of:
  * @buffer: buffer to scan.
  * @char_to_find: a byte to look for.
  *
@@ -727,14 +728,14 @@ protobuf_c_data_buffer_clear(ProtobufCDataBuffer *to_destroy)
  * is not in the buffer.
  */
 int
-protobuf_c_data_buffer_index_of(ProtobufCDataBuffer *buffer,
+protobuf_c_rpc_data_buffer_index_of(ProtobufCRPCDataBuffer *buffer,
                     char       char_to_find)
 {
-  ProtobufCDataBufferFragment *at = buffer->first_frag;
+  ProtobufCRPCDataBufferFragment *at = buffer->first_frag;
   int rv = 0;
   while (at)
     {
-      uint8_t *start = protobuf_c_data_buffer_fragment_start (at);
+      uint8_t *start = protobuf_c_rpc_data_buffer_fragment_start (at);
       uint8_t *saught = memchr (start, char_to_find, at->buf_length);
       if (saught)
 	return (saught - start) + rv;
@@ -746,7 +747,7 @@ protobuf_c_data_buffer_index_of(ProtobufCDataBuffer *buffer,
 }
 
 /**
- * protobuf_c_data_buffer_str_index_of:
+ * protobuf_c_rpc_data_buffer_str_index_of:
  * @buffer: buffer to scan.
  * @str_to_find: a string to look for.
  *
@@ -755,18 +756,18 @@ protobuf_c_data_buffer_index_of(ProtobufCDataBuffer *buffer,
  * is not in the buffer.
  */
 int 
-protobuf_c_data_buffer_str_index_of (ProtobufCDataBuffer *buffer,
+protobuf_c_rpc_data_buffer_str_index_of (ProtobufCRPCDataBuffer *buffer,
                          const char *str_to_find)
 {
-  ProtobufCDataBufferFragment *frag = buffer->first_frag;
+  ProtobufCRPCDataBufferFragment *frag = buffer->first_frag;
   size_t rv = 0;
   for (frag = buffer->first_frag; frag; frag = frag->next)
     {
-      const uint8_t *frag_at = PROTOBUF_C_FRAGMENT_DATA (frag);
+      const uint8_t *frag_at = PROTOBUF_C_RPC_FRAGMENT_DATA (frag);
       size_t frag_rem = frag->buf_length;
       while (frag_rem > 0)
         {
-          ProtobufCDataBufferFragment *subfrag;
+          ProtobufCRPCDataBufferFragment *subfrag;
           const uint8_t *subfrag_at;
           size_t subfrag_rem;
           const char *str_at;
@@ -790,7 +791,7 @@ protobuf_c_data_buffer_str_index_of (ProtobufCDataBuffer *buffer,
                   subfrag = subfrag->next;
                   if (subfrag == NULL)
                     goto bad_guess;
-                  subfrag_at = protobuf_c_data_buffer_fragment_start (subfrag);
+                  subfrag_at = protobuf_c_rpc_data_buffer_fragment_start (subfrag);
                   subfrag_rem = subfrag->buf_length;
                 }
               while (*str_at != '\0' && subfrag_rem != 0)
@@ -812,7 +813,7 @@ bad_guess:
 }
 
 /**
- * protobuf_c_data_buffer_drain:
+ * protobuf_c_rpc_data_buffer_drain:
  * @dst: buffer to add to.
  * @src: buffer to remove from.
  *
@@ -823,26 +824,26 @@ bad_guess:
  */
 #if GSK_DEBUG_BUFFER_ALLOCATIONS
 size_t
-protobuf_c_data_buffer_drain (ProtobufCDataBuffer *dst,
-		  ProtobufCDataBuffer *src)
+protobuf_c_rpc_data_buffer_drain (ProtobufCRPCDataBuffer *dst,
+		  ProtobufCRPCDataBuffer *src)
 {
   size_t rv = src->size;
-  ProtobufCDataBufferFragment *frag;
+  ProtobufCRPCDataBufferFragment *frag;
   CHECK_INTEGRITY (dst);
   CHECK_INTEGRITY (src);
   for (frag = src->first_frag; frag; frag = frag->next)
-    protobuf_c_data_buffer_append (dst,
-                       protobuf_c_data_buffer_fragment_start (frag),
+    protobuf_c_rpc_data_buffer_append (dst,
+                       protobuf_c_rpc_data_buffer_fragment_start (frag),
                        frag->buf_length);
-  protobuf_c_data_buffer_discard (src, src->size);
+  protobuf_c_rpc_data_buffer_discard (src, src->size);
   CHECK_INTEGRITY (dst);
   CHECK_INTEGRITY (src);
   return rv;
 }
 #else	/* optimized */
 size_t
-protobuf_c_data_buffer_drain (ProtobufCDataBuffer *dst,
-		  ProtobufCDataBuffer *src)
+protobuf_c_rpc_data_buffer_drain (ProtobufCRPCDataBuffer *dst,
+		  ProtobufCRPCDataBuffer *src)
 {
   size_t rv = src->size;
 
@@ -871,7 +872,7 @@ protobuf_c_data_buffer_drain (ProtobufCDataBuffer *dst,
 #endif
 
 /**
- * protobuf_c_data_buffer_transfer:
+ * protobuf_c_rpc_data_buffer_transfer:
  * @dst: place to copy data into.
  * @src: place to read data from.
  * @max_transfer: maximum number of bytes to transfer.
@@ -884,12 +885,12 @@ protobuf_c_data_buffer_drain (ProtobufCDataBuffer *dst,
  */
 #if GSK_DEBUG_BUFFER_ALLOCATIONS
 size_t
-protobuf_c_data_buffer_transfer(ProtobufCDataBuffer *dst,
-		    ProtobufCDataBuffer *src,
+protobuf_c_rpc_data_buffer_transfer(ProtobufCRPCDataBuffer *dst,
+		    ProtobufCRPCDataBuffer *src,
 		    size_t max_transfer)
 {
   size_t rv = 0;
-  ProtobufCDataBufferFragment *frag;
+  ProtobufCRPCDataBufferFragment *frag;
   CHECK_INTEGRITY (dst);
   CHECK_INTEGRITY (src);
   for (frag = src->first_frag; frag && max_transfer > 0; frag = frag->next)
@@ -897,26 +898,26 @@ protobuf_c_data_buffer_transfer(ProtobufCDataBuffer *dst,
       size_t len = frag->buf_length;
       if (len >= max_transfer)
         {
-          protobuf_c_data_buffer_append (dst, protobuf_c_data_buffer_fragment_start (frag), max_transfer);
+          protobuf_c_rpc_data_buffer_append (dst, protobuf_c_rpc_data_buffer_fragment_start (frag), max_transfer);
           rv += max_transfer;
           break;
         }
       else
         {
-          protobuf_c_data_buffer_append (dst, protobuf_c_data_buffer_fragment_start (frag), len);
+          protobuf_c_rpc_data_buffer_append (dst, protobuf_c_rpc_data_buffer_fragment_start (frag), len);
           rv += len;
           max_transfer -= len;
         }
     }
-  protobuf_c_data_buffer_discard (src, rv);
+  protobuf_c_rpc_data_buffer_discard (src, rv);
   CHECK_INTEGRITY (dst);
   CHECK_INTEGRITY (src);
   return rv;
 }
 #else	/* optimized */
 size_t
-protobuf_c_data_buffer_transfer(ProtobufCDataBuffer *dst,
-		    ProtobufCDataBuffer *src,
+protobuf_c_rpc_data_buffer_transfer(ProtobufCRPCDataBuffer *dst,
+		    ProtobufCRPCDataBuffer *src,
 		    size_t max_transfer)
 {
   size_t rv = 0;
@@ -924,7 +925,7 @@ protobuf_c_data_buffer_transfer(ProtobufCDataBuffer *dst,
   CHECK_INTEGRITY (src);
   while (src->first_frag && max_transfer >= src->first_frag->buf_length)
     {
-      ProtobufCDataBufferFragment *frag = src->first_frag;
+      ProtobufCRPCDataBufferFragment *frag = src->first_frag;
       src->first_frag = frag->next;
       frag->next = NULL;
       if (src->first_frag == NULL)
@@ -942,8 +943,8 @@ protobuf_c_data_buffer_transfer(ProtobufCDataBuffer *dst,
   dst->size += rv;
   if (src->first_frag && max_transfer)
     {
-      ProtobufCDataBufferFragment *frag = src->first_frag;
-      protobuf_c_data_buffer_append (dst, protobuf_c_data_buffer_fragment_start (frag), max_transfer);
+      ProtobufCRPCDataBufferFragment *frag = src->first_frag;
+      protobuf_c_rpc_data_buffer_append (dst, protobuf_c_rpc_data_buffer_fragment_start (frag), max_transfer);
       frag->buf_start += max_transfer;
       frag->buf_length -= max_transfer;
       rv += max_transfer;
@@ -957,32 +958,32 @@ protobuf_c_data_buffer_transfer(ProtobufCDataBuffer *dst,
 
 #if 0
 /**
- * protobuf_c_data_buffer_printf:
+ * protobuf_c_rpc_data_buffer_printf:
  * @buffer: the buffer to append to.
  * @format: printf-style format string describing what to append to buffer.
  * @Varargs: values referenced by @format string.
  *
  * Append printf-style content to a buffer.
  */
-void     protobuf_c_data_buffer_printf              (ProtobufCDataBuffer    *buffer,
+void     protobuf_c_rpc_data_buffer_printf              (ProtobufCRPCDataBuffer    *buffer,
 					 const char   *format,
 					 ...)
 {
   va_list args;
   va_start (args, format);
-  protobuf_c_data_buffer_vprintf (buffer, format, args);
+  protobuf_c_rpc_data_buffer_vprintf (buffer, format, args);
   va_end (args);
 }
 
 /**
- * protobuf_c_data_buffer_vprintf:
+ * protobuf_c_rpc_data_buffer_vprintf:
  * @buffer: the buffer to append to.
  * @format: printf-style format string describing what to append to buffer.
  * @args: values referenced by @format string.
  *
  * Append printf-style content to a buffer, given a va_list.
  */
-void     protobuf_c_data_buffer_vprintf             (ProtobufCDataBuffer    *buffer,
+void     protobuf_c_rpc_data_buffer_vprintf             (ProtobufCRPCDataBuffer    *buffer,
 					 const char   *format,
 					 va_list       args)
 {
@@ -991,21 +992,21 @@ void     protobuf_c_data_buffer_vprintf             (ProtobufCDataBuffer    *buf
     {
       char buf[1024];
       g_vsnprintf (buf, sizeof (buf), format, args);
-      protobuf_c_data_buffer_append_string (buffer, buf);
+      protobuf_c_rpc_data_buffer_append_string (buffer, buf);
     }
   else
     {
       char *buf = g_strdup_vprintf (format, args);
-      protobuf_c_data_buffer_append_foreign (buffer, buf, strlen (buf), g_free, buf);
+      protobuf_c_rpc_data_buffer_append_foreign (buffer, buf, strlen (buf), g_free, buf);
     }
 }
 
-/* --- protobuf_c_data_buffer_polystr_index_of implementation --- */
+/* --- protobuf_c_rpc_data_buffer_polystr_index_of implementation --- */
 /* Test to see if a sequence of buffer fragments
  * starts with a particular NUL-terminated string.
  */
 static gboolean
-fragment_n_str(ProtobufCDataBufferFragment   *frag,
+fragment_n_str(ProtobufCRPCDataBufferFragment   *frag,
                size_t                frag_index,
                const char          *string)
 {
@@ -1017,7 +1018,7 @@ fragment_n_str(ProtobufCDataBufferFragment   *frag,
         test_len = len;
 
       if (memcmp (string,
-                  protobuf_c_data_buffer_fragment_start (frag) + frag_index,
+                  protobuf_c_rpc_data_buffer_fragment_start (frag) + frag_index,
                   test_len) != 0)
         return FALSE;
 
@@ -1037,7 +1038,7 @@ fragment_n_str(ProtobufCDataBufferFragment   *frag,
 }
 
 /**
- * protobuf_c_data_buffer_polystr_index_of:
+ * protobuf_c_rpc_data_buffer_polystr_index_of:
  * @buffer: buffer to scan.
  * @strings: NULL-terminated set of string.
  *
@@ -1047,14 +1048,14 @@ fragment_n_str(ProtobufCDataBufferFragment   *frag,
  * returns: the index of that instance, or -1 if not found.
  */
 int     
-protobuf_c_data_buffer_polystr_index_of    (ProtobufCDataBuffer    *buffer,
+protobuf_c_rpc_data_buffer_polystr_index_of    (ProtobufCRPCDataBuffer    *buffer,
                                 char        **strings)
 {
   uint8_t init_char_map[16];
   int num_strings;
   int num_bits = 0;
   int total_index = 0;
-  ProtobufCDataBufferFragment *frag;
+  ProtobufCRPCDataBufferFragment *frag;
   memset (init_char_map, 0, sizeof (init_char_map));
   for (num_strings = 0; strings[num_strings] != NULL; num_strings++)
     {
@@ -1074,7 +1075,7 @@ protobuf_c_data_buffer_polystr_index_of    (ProtobufCDataBuffer    *buffer,
       const char *frag_start;
       const char *at;
       int remaining = frag->buf_length;
-      frag_start = protobuf_c_data_buffer_fragment_start (frag);
+      frag_start = protobuf_c_rpc_data_buffer_fragment_start (frag);
       at = frag_start;
       while (at != NULL)
         {

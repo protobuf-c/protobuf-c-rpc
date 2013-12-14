@@ -61,6 +61,7 @@
 #include <limits.h>
 #include <errno.h>
 #include <signal.h>
+#include "protobuf-c-rpc.h"
 #include "protobuf-c-rpc-dispatch.h"
 #include "gskrbtreemacros.h"
 #include "gsklistmacros.h"
@@ -72,7 +73,7 @@
 # define HAVE_SMALL_FDS           1
 #endif
 
-#define protobuf_c_assert(condition) assert(condition)
+#define protobuf_c_rpc_assert(condition) assert(condition)
 
 #define ALLOC_WITH_ALLOCATOR(allocator, size) ((allocator)->alloc ((allocator)->allocator_data, (size)))
 #define FREE_WITH_ALLOCATOR(allocator, ptr)   ((allocator)->free ((allocator)->allocator_data, (ptr)))
@@ -85,7 +86,7 @@
 typedef struct _Callback Callback;
 struct _Callback
 {
-  ProtobufCDispatchCallback func;
+  ProtobufCRPCDispatchCallback func;
   void *data;
 };
 
@@ -101,7 +102,7 @@ struct _FDMap
 typedef struct _FDMapNode FDMapNode;
 struct _FDMapNode
 {
-  ProtobufC_FD fd;
+  ProtobufC_RPC_FD fd;
   FDMapNode *left, *right, *parent;
   protobuf_c_boolean is_red;
   FDMap map;
@@ -112,7 +113,7 @@ struct _FDMapNode
 typedef struct _RealDispatch RealDispatch;
 struct _RealDispatch
 {
-  ProtobufCDispatch base;
+  ProtobufCRPCDispatch base;
   Callback *callbacks;          /* parallels notifies_desired */
   size_t notifies_desired_alloced;
   size_t changes_alloced;
@@ -125,15 +126,15 @@ struct _RealDispatch
 
   protobuf_c_boolean is_dispatching;
 
-  ProtobufCDispatchTimer *timer_tree;
+  ProtobufCRPCDispatchTimer *timer_tree;
   ProtobufCAllocator *allocator;
-  ProtobufCDispatchTimer *recycled_timeouts;
+  ProtobufCRPCDispatchTimer *recycled_timeouts;
 
-  ProtobufCDispatchIdle *first_idle, *last_idle;
-  ProtobufCDispatchIdle *recycled_idles;
+  ProtobufCRPCDispatchIdle *first_idle, *last_idle;
+  ProtobufCRPCDispatchIdle *recycled_idles;
 };
 
-struct _ProtobufCDispatchTimer
+struct _ProtobufCRPCDispatchTimer
 {
   RealDispatch *dispatch;
 
@@ -142,22 +143,22 @@ struct _ProtobufCDispatchTimer
   unsigned timeout_usecs;
 
   /* red-black tree stuff */
-  ProtobufCDispatchTimer *left, *right, *parent;
+  ProtobufCRPCDispatchTimer *left, *right, *parent;
   protobuf_c_boolean is_red;
 
   /* user callback */
-  ProtobufCDispatchTimerFunc func;
+  ProtobufCRPCDispatchTimerFunc func;
   void *func_data;
 };
 
-struct _ProtobufCDispatchIdle
+struct _ProtobufCRPCDispatchIdle
 {
   RealDispatch *dispatch;
 
-  ProtobufCDispatchIdle *prev, *next;
+  ProtobufCRPCDispatchIdle *prev, *next;
 
   /* user callback */
-  ProtobufCDispatchIdleFunc func;
+  ProtobufCRPCDispatchIdleFunc func;
   void *func_data;
 };
 /* Define the tree of timers, as per gskrbtreemacros.h */
@@ -172,7 +173,7 @@ struct _ProtobufCDispatchIdle
   else if (a > b) rv = 1; \
   else rv = 0;
 #define GET_TIMER_TREE(d) \
-  (d)->timer_tree, ProtobufCDispatchTimer *, \
+  (d)->timer_tree, ProtobufCRPCDispatchTimer *, \
   TIMER_GET_IS_RED, TIMER_SET_IS_RED, \
   parent, left, right, \
   TIMERS_COMPARE
@@ -195,20 +196,20 @@ struct _ProtobufCDispatchIdle
 
 /* declare the idle-handler list */
 #define GET_IDLE_LIST(d) \
-  ProtobufCDispatchIdle *, d->first_idle, d->last_idle, prev, next
+  ProtobufCRPCDispatchIdle *, d->first_idle, d->last_idle, prev, next
 
 /* Create or destroy a Dispatch */
-ProtobufCDispatch *protobuf_c_dispatch_new (ProtobufCAllocator *allocator)
+ProtobufCRPCDispatch *protobuf_c_rpc_dispatch_new (ProtobufCAllocator *allocator)
 {
   RealDispatch *rv = ALLOC (sizeof (RealDispatch));
   struct timeval tv;
   rv->base.n_changes = 0;
   rv->notifies_desired_alloced = 8;
-  rv->base.notifies_desired = ALLOC (sizeof (ProtobufC_FDNotify) * rv->notifies_desired_alloced);
+  rv->base.notifies_desired = ALLOC (sizeof (ProtobufC_RPC_FDNotify) * rv->notifies_desired_alloced);
   rv->base.n_notifies_desired = 0;
   rv->callbacks = ALLOC (sizeof (Callback) * rv->notifies_desired_alloced);
   rv->changes_alloced = 8;
-  rv->base.changes = ALLOC (sizeof (ProtobufC_FDNotifyChange) * rv->changes_alloced);
+  rv->base.changes = ALLOC (sizeof (ProtobufC_RPC_FDNotifyChange) * rv->changes_alloced);
 #if HAVE_SMALL_FDS
   rv->fd_map_size = 16;
   rv->fd_map = ALLOC (sizeof (FDMap) * rv->fd_map_size);
@@ -249,19 +250,19 @@ void free_fd_tree_recursive (ProtobufCAllocator *allocator,
 
 /* XXX: leaking timer_tree seemingly? */
 void
-protobuf_c_dispatch_free(ProtobufCDispatch *dispatch)
+protobuf_c_rpc_dispatch_free(ProtobufCRPCDispatch *dispatch)
 {
   RealDispatch *d = (RealDispatch *) dispatch;
   ProtobufCAllocator *allocator = d->allocator;
   while (d->recycled_timeouts != NULL)
     {
-      ProtobufCDispatchTimer *t = d->recycled_timeouts;
+      ProtobufCRPCDispatchTimer *t = d->recycled_timeouts;
       d->recycled_timeouts = t->right;
       FREE (t);
     }
   while (d->recycled_idles != NULL)
     {
-      ProtobufCDispatchIdle *i = d->recycled_idles;
+      ProtobufCRPCDispatchIdle *i = d->recycled_idles;
       d->recycled_idles = i->next;
       FREE (i);
     }
@@ -278,18 +279,18 @@ protobuf_c_dispatch_free(ProtobufCDispatch *dispatch)
 }
 
 ProtobufCAllocator *
-protobuf_c_dispatch_peek_allocator (ProtobufCDispatch *dispatch)
+protobuf_c_rpc_dispatch_peek_allocator (ProtobufCRPCDispatch *dispatch)
 {
   RealDispatch *d = (RealDispatch *) dispatch;
   return d->allocator;
 }
 
 /* TODO: perhaps thread-private dispatches make more sense? */
-static ProtobufCDispatch *def = NULL;
-ProtobufCDispatch  *protobuf_c_dispatch_default (void)
+static ProtobufCRPCDispatch *def = NULL;
+ProtobufCRPCDispatch  *protobuf_c_rpc_dispatch_default (void)
 {
   if (def == NULL)
-    def = protobuf_c_dispatch_new (&protobuf_c_default_allocator);
+    def = protobuf_c_rpc_dispatch_new (&protobuf_c_default_allocator);
   return def;
 }
 
@@ -330,9 +331,9 @@ allocate_notifies_desired_index (RealDispatch *d)
   if (rv == d->notifies_desired_alloced)
     {
       unsigned new_size = d->notifies_desired_alloced * 2;
-      ProtobufC_FDNotify *n = ALLOC (new_size * sizeof (ProtobufC_FDNotify));
+      ProtobufC_RPC_FDNotify *n = ALLOC (new_size * sizeof (ProtobufC_RPC_FDNotify));
       Callback *c = ALLOC (new_size * sizeof (Callback));
-      memcpy (n, d->base.notifies_desired, d->notifies_desired_alloced * sizeof (ProtobufC_FDNotify));
+      memcpy (n, d->base.notifies_desired, d->notifies_desired_alloced * sizeof (ProtobufC_RPC_FDNotify));
       FREE (d->base.notifies_desired);
       memcpy (c, d->callbacks, d->notifies_desired_alloced * sizeof (Callback));
       FREE (d->callbacks);
@@ -353,8 +354,8 @@ allocate_change_index (RealDispatch *d)
     {
       ProtobufCAllocator *allocator = d->allocator;
       unsigned new_size = d->changes_alloced * 2;
-      ProtobufC_FDNotifyChange *n = ALLOC (new_size * sizeof (ProtobufC_FDNotifyChange));
-      memcpy (n, d->base.changes, d->changes_alloced * sizeof (ProtobufC_FDNotifyChange));
+      ProtobufC_RPC_FDNotifyChange *n = ALLOC (new_size * sizeof (ProtobufC_RPC_FDNotifyChange));
+      memcpy (n, d->base.changes, d->changes_alloced * sizeof (ProtobufC_RPC_FDNotifyChange));
       FREE (d->base.changes);
       d->base.changes = n;
       d->changes_alloced = new_size;
@@ -363,7 +364,7 @@ allocate_change_index (RealDispatch *d)
 }
 
 static inline FDMap *
-get_fd_map (RealDispatch *d, ProtobufC_FD fd)
+get_fd_map (RealDispatch *d, ProtobufC_RPC_FD fd)
 {
 #if HAVE_SMALL_FDS
   if ((unsigned)fd >= d->fd_map_size)
@@ -377,7 +378,7 @@ get_fd_map (RealDispatch *d, ProtobufC_FD fd)
 #endif
 }
 static inline FDMap *
-force_fd_map (RealDispatch *d, ProtobufC_FD fd)
+force_fd_map (RealDispatch *d, ProtobufC_RPC_FD fd)
 {
 #if HAVE_SMALL_FDS
   ensure_fd_map_big_enough (d, fd);
@@ -407,7 +408,7 @@ deallocate_change_index (RealDispatch *d,
 {
   unsigned ch_ind = fm->change_index;
   unsigned from = d->base.n_changes - 1;
-  ProtobufC_FD from_fd;
+  ProtobufC_RPC_FD from_fd;
   fm->change_index = -1;
   if (ch_ind == from)
     {
@@ -422,12 +423,12 @@ deallocate_change_index (RealDispatch *d,
 
 static void
 deallocate_notify_desired_index (RealDispatch *d,
-                                 ProtobufC_FD  fd,
+                                 ProtobufC_RPC_FD  fd,
                                  FDMap        *fm)
 {
   unsigned nd_ind = fm->notify_desired_index;
   unsigned from = d->base.n_notifies_desired - 1;
-  ProtobufC_FD from_fd;
+  ProtobufC_RPC_FD from_fd;
   (void) fd;
 #if DEBUG_DISPATCH_INTERNALS
   fprintf (stderr, "deallocate_notify_desired_index: fd=%d, nd_ind=%u\n",fd,nd_ind);
@@ -447,10 +448,10 @@ deallocate_notify_desired_index (RealDispatch *d,
 
 /* Registering file-descriptors to watch. */
 void
-protobuf_c_dispatch_watch_fd (ProtobufCDispatch *dispatch,
-                              ProtobufC_FD        fd,
+protobuf_c_rpc_dispatch_watch_fd (ProtobufCRPCDispatch *dispatch,
+                              ProtobufC_RPC_FD        fd,
                               unsigned            events,
-                              ProtobufCDispatchCallback callback,
+                              ProtobufCRPCDispatchCallback callback,
                               void               *callback_data)
 {
   RealDispatch *d = (RealDispatch *) dispatch;
@@ -461,8 +462,8 @@ protobuf_c_dispatch_watch_fd (ProtobufCDispatch *dispatch,
 #if DEBUG_DISPATCH
   fprintf (stderr, "dispatch: watch_fd: %d, %s%s\n",
            fd,
-           (events&PROTOBUF_C_EVENT_READABLE)?"r":"",
-           (events&PROTOBUF_C_EVENT_WRITABLE)?"w":"");
+           (events&PROTOBUF_C_RPC_EVENT_READABLE)?"r":"",
+           (events&PROTOBUF_C_RPC_EVENT_WRITABLE)?"w":"");
 #endif
   if (callback == NULL)
     assert (events == 0);
@@ -517,16 +518,16 @@ protobuf_c_dispatch_watch_fd (ProtobufCDispatch *dispatch,
 }
 
 void
-protobuf_c_dispatch_close_fd (ProtobufCDispatch *dispatch,
-                              ProtobufC_FD        fd)
+protobuf_c_rpc_dispatch_close_fd (ProtobufCRPCDispatch *dispatch,
+                              ProtobufC_RPC_FD        fd)
 {
-  protobuf_c_dispatch_fd_closed (dispatch, fd);
+  protobuf_c_rpc_dispatch_fd_closed (dispatch, fd);
   close (fd);
 }
 
 void
-protobuf_c_dispatch_fd_closed(ProtobufCDispatch *dispatch,
-                              ProtobufC_FD        fd)
+protobuf_c_rpc_dispatch_fd_closed(ProtobufCRPCDispatch *dispatch,
+                              ProtobufC_RPC_FD        fd)
 {
   RealDispatch *d = (RealDispatch *) dispatch;
   FDMap *fm;
@@ -542,7 +543,7 @@ protobuf_c_dispatch_fd_closed(ProtobufCDispatch *dispatch,
 }
 
 static void
-free_timer (ProtobufCDispatchTimer *timer)
+free_timer (ProtobufCRPCDispatchTimer *timer)
 {
   RealDispatch *d = timer->dispatch;
   timer->right = d->recycled_timeouts;
@@ -550,9 +551,9 @@ free_timer (ProtobufCDispatchTimer *timer)
 }
 
 void
-protobuf_c_dispatch_dispatch (ProtobufCDispatch *dispatch,
+protobuf_c_rpc_dispatch_dispatch (ProtobufCRPCDispatch *dispatch,
                               size_t              n_notifies,
-                              ProtobufC_FDNotify *notifies)
+                              ProtobufC_RPC_FDNotify *notifies)
 {
   RealDispatch *d = (RealDispatch *) dispatch;
   unsigned fd_max;
@@ -560,9 +561,9 @@ protobuf_c_dispatch_dispatch (ProtobufCDispatch *dispatch,
   struct timeval tv;
 
   /* Re-entrancy guard.  If this is triggerred, then
-     you are calling protobuf_c_dispatch_dispatch (or _run)
+     you are calling protobuf_c_rpc_dispatch_dispatch (or _run)
      from a callback function.  That's not allowed. */
-  protobuf_c_assert (!d->is_dispatching);
+  protobuf_c_rpc_assert (!d->is_dispatching);
   d->is_dispatching = 1;
 
   gettimeofday (&tv, NULL);
@@ -597,8 +598,8 @@ protobuf_c_dispatch_dispatch (ProtobufCDispatch *dispatch,
   /* handle idle functions */
   while (d->first_idle != NULL)
     {
-      ProtobufCDispatchIdle *idle = d->first_idle;
-      ProtobufCDispatchIdleFunc func = idle->func;
+      ProtobufCRPCDispatchIdle *idle = d->first_idle;
+      ProtobufCRPCDispatchIdleFunc func = idle->func;
       void *data = idle->func_data;
       GSK_LIST_REMOVE_FIRST (GET_IDLE_LIST (d));
 
@@ -613,16 +614,16 @@ protobuf_c_dispatch_dispatch (ProtobufCDispatch *dispatch,
   /* handle timers */
   while (d->timer_tree != NULL)
     {
-      ProtobufCDispatchTimer *min_timer;
+      ProtobufCRPCDispatchTimer *min_timer;
       GSK_RBTREE_FIRST (GET_TIMER_TREE (d), min_timer);
       if (min_timer->timeout_secs < (unsigned long) tv.tv_sec
        || (min_timer->timeout_secs == (unsigned long) tv.tv_sec
         && min_timer->timeout_usecs <= (unsigned) tv.tv_usec))
         {
-          ProtobufCDispatchTimerFunc func = min_timer->func;
+          ProtobufCRPCDispatchTimerFunc func = min_timer->func;
           void *func_data = min_timer->func_data;
           GSK_RBTREE_REMOVE (GET_TIMER_TREE (d), min_timer);
-          /* Set to NULL as a way to tell protobuf_c_dispatch_remove_timer()
+          /* Set to NULL as a way to tell protobuf_c_rpc_dispatch_remove_timer()
              that we are in the middle of notifying */
           min_timer->func = NULL;
           min_timer->func_data = NULL;
@@ -645,7 +646,7 @@ protobuf_c_dispatch_dispatch (ProtobufCDispatch *dispatch,
 }
 
 void
-protobuf_c_dispatch_clear_changes (ProtobufCDispatch *dispatch)
+protobuf_c_rpc_dispatch_clear_changes (ProtobufCRPCDispatch *dispatch)
 {
   RealDispatch *d = (RealDispatch *) dispatch;
   unsigned i;
@@ -661,20 +662,20 @@ protobuf_c_dispatch_clear_changes (ProtobufCDispatch *dispatch)
 static inline unsigned
 events_to_pollfd_events (unsigned ev)
 {
-  return  ((ev & PROTOBUF_C_EVENT_READABLE) ? POLLIN : 0)
-       |  ((ev & PROTOBUF_C_EVENT_WRITABLE) ? POLLOUT : 0)
+  return  ((ev & PROTOBUF_C_RPC_EVENT_READABLE) ? POLLIN : 0)
+       |  ((ev & PROTOBUF_C_RPC_EVENT_WRITABLE) ? POLLOUT : 0)
        ;
 }
 static inline unsigned
 pollfd_events_to_events (unsigned ev)
 {
-  return  ((ev & (POLLIN|POLLHUP)) ? PROTOBUF_C_EVENT_READABLE : 0)
-       |  ((ev & POLLOUT) ? PROTOBUF_C_EVENT_WRITABLE : 0)
+  return  ((ev & (POLLIN|POLLHUP)) ? PROTOBUF_C_RPC_EVENT_READABLE : 0)
+       |  ((ev & POLLOUT) ? PROTOBUF_C_RPC_EVENT_WRITABLE : 0)
        ;
 }
 
 void
-protobuf_c_dispatch_run (ProtobufCDispatch *dispatch)
+protobuf_c_rpc_dispatch_run (ProtobufCRPCDispatch *dispatch)
 {
   struct pollfd *fds;
   void *to_free = NULL, *to_free2 = NULL;
@@ -683,7 +684,7 @@ protobuf_c_dispatch_run (ProtobufCDispatch *dispatch)
   ProtobufCAllocator *allocator = d->allocator;
   unsigned i;
   int timeout;
-  ProtobufC_FDNotify *events;
+  ProtobufC_RPC_FDNotify *events;
   if (dispatch->n_notifies_desired < 128)
     fds = alloca (sizeof (struct pollfd) * dispatch->n_notifies_desired);
   else
@@ -740,9 +741,9 @@ protobuf_c_dispatch_run (ProtobufCDispatch *dispatch)
     if (fds[i].revents)
       n_events++;
   if (n_events < 128)
-    events = alloca (sizeof (ProtobufC_FDNotify) * n_events);
+    events = alloca (sizeof (ProtobufC_RPC_FDNotify) * n_events);
   else
-    to_free2 = events = ALLOC (sizeof (ProtobufC_FDNotify) * n_events);
+    to_free2 = events = ALLOC (sizeof (ProtobufC_RPC_FDNotify) * n_events);
   n_events = 0;
   for (i = 0; i < dispatch->n_notifies_desired; i++)
     if (fds[i].revents)
@@ -755,25 +756,25 @@ protobuf_c_dispatch_run (ProtobufCDispatch *dispatch)
         if (events[n_events].events != 0)
           n_events++;
       }
-  protobuf_c_dispatch_dispatch (dispatch, n_events, events);
+  protobuf_c_rpc_dispatch_dispatch (dispatch, n_events, events);
   if (to_free)
     FREE (to_free);
   if (to_free2)
     FREE (to_free2);
 }
 
-ProtobufCDispatchTimer *
-protobuf_c_dispatch_add_timer(ProtobufCDispatch *dispatch,
+ProtobufCRPCDispatchTimer *
+protobuf_c_rpc_dispatch_add_timer(ProtobufCRPCDispatch *dispatch,
                               unsigned            timeout_secs,
                               unsigned            timeout_usecs,
-                              ProtobufCDispatchTimerFunc func,
+                              ProtobufCRPCDispatchTimerFunc func,
                               void               *func_data)
 {
   RealDispatch *d = (RealDispatch *) dispatch;
-  ProtobufCDispatchTimer *rv;
-  ProtobufCDispatchTimer *at;
-  ProtobufCDispatchTimer *conflict;
-  protobuf_c_assert (func != NULL);
+  ProtobufCRPCDispatchTimer *rv;
+  ProtobufCRPCDispatchTimer *at;
+  ProtobufCRPCDispatchTimer *conflict;
+  protobuf_c_rpc_assert (func != NULL);
   if (d->recycled_timeouts != NULL)
     {
       rv = d->recycled_timeouts;
@@ -781,7 +782,7 @@ protobuf_c_dispatch_add_timer(ProtobufCDispatch *dispatch,
     }
   else
     {
-      rv = d->allocator->alloc (d->allocator, sizeof (ProtobufCDispatchTimer));
+      rv = d->allocator->alloc (d->allocator, sizeof (ProtobufCRPCDispatchTimer));
     }
   rv->timeout_secs = timeout_secs;
   rv->timeout_usecs = timeout_usecs;
@@ -803,11 +804,11 @@ protobuf_c_dispatch_add_timer(ProtobufCDispatch *dispatch,
   return rv;
 }
 
-ProtobufCDispatchTimer *
-protobuf_c_dispatch_add_timer_millis
-                             (ProtobufCDispatch *dispatch,
+ProtobufCRPCDispatchTimer *
+protobuf_c_rpc_dispatch_add_timer_millis
+                             (ProtobufCRPCDispatch *dispatch,
                               unsigned            millis,
-                              ProtobufCDispatchTimerFunc func,
+                              ProtobufCRPCDispatchTimerFunc func,
                               void               *func_data)
 {
   unsigned tsec = dispatch->last_dispatch_secs;
@@ -819,10 +820,10 @@ protobuf_c_dispatch_add_timer_millis
       tusec -= 1000*1000;
       tsec += 1;
     }
-  return protobuf_c_dispatch_add_timer (dispatch, tsec, tusec, func, func_data);
+  return protobuf_c_rpc_dispatch_add_timer (dispatch, tsec, tusec, func, func_data);
 }
 
-void  protobuf_c_dispatch_remove_timer (ProtobufCDispatchTimer *timer)
+void  protobuf_c_rpc_dispatch_remove_timer (ProtobufCRPCDispatchTimer *timer)
 {
   protobuf_c_boolean may_be_first;
   RealDispatch *d = timer->dispatch;
@@ -842,20 +843,20 @@ void  protobuf_c_dispatch_remove_timer (ProtobufCDispatchTimer *timer)
         d->base.has_timeout = 0;
       else
         {
-          ProtobufCDispatchTimer *min;
+          ProtobufCRPCDispatchTimer *min;
           GSK_RBTREE_FIRST (GET_TIMER_TREE (d), min);
           d->base.timeout_secs = min->timeout_secs;
           d->base.timeout_usecs = min->timeout_usecs;
         }
     }
 }
-ProtobufCDispatchIdle *
-protobuf_c_dispatch_add_idle (ProtobufCDispatch *dispatch,
-                              ProtobufCDispatchIdleFunc func,
+ProtobufCRPCDispatchIdle *
+protobuf_c_rpc_dispatch_add_idle (ProtobufCRPCDispatch *dispatch,
+                              ProtobufCRPCDispatchIdleFunc func,
                               void               *func_data)
 {
   RealDispatch *d = (RealDispatch *) dispatch;
-  ProtobufCDispatchIdle *rv;
+  ProtobufCRPCDispatchIdle *rv;
   if (d->recycled_idles != NULL)
     {
       rv = d->recycled_idles;
@@ -864,7 +865,7 @@ protobuf_c_dispatch_add_idle (ProtobufCDispatch *dispatch,
   else
     {
       ProtobufCAllocator *allocator = d->allocator;
-      rv = ALLOC (sizeof (ProtobufCDispatchIdle));
+      rv = ALLOC (sizeof (ProtobufCRPCDispatchIdle));
     }
   GSK_LIST_APPEND (GET_IDLE_LIST (d), rv);
   rv->func = func;
@@ -875,7 +876,7 @@ protobuf_c_dispatch_add_idle (ProtobufCDispatch *dispatch,
 }
 
 void
-protobuf_c_dispatch_remove_idle (ProtobufCDispatchIdle *idle)
+protobuf_c_rpc_dispatch_remove_idle (ProtobufCRPCDispatchIdle *idle)
 {
   if (idle->func != NULL)
     {
@@ -885,12 +886,12 @@ protobuf_c_dispatch_remove_idle (ProtobufCDispatchIdle *idle)
       d->recycled_idles = idle;
     }
 }
-void protobuf_c_dispatch_destroy_default (void)
+void protobuf_c_rpc_dispatch_destroy_default (void)
 {
   if (def)
     {
-      ProtobufCDispatch *to_kill = def;
+      ProtobufCRPCDispatch *to_kill = def;
       def = NULL;
-      protobuf_c_dispatch_free (to_kill);
+      protobuf_c_rpc_dispatch_free (to_kill);
     }
 }

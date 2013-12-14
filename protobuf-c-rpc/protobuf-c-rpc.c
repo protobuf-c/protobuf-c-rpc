@@ -21,7 +21,7 @@
 #include "protobuf-c-rpc-data-buffer.h"
 #include "gsklistmacros.h"
 
-#define protobuf_c_assert(x) assert(x)
+#define protobuf_c_rpc_assert(x) assert(x)
 
 #undef TRUE
 #define TRUE 1
@@ -38,13 +38,13 @@
 
 typedef enum
 {
-  PROTOBUF_C_CLIENT_STATE_INIT,
-  PROTOBUF_C_CLIENT_STATE_NAME_LOOKUP,
-  PROTOBUF_C_CLIENT_STATE_CONNECTING,
-  PROTOBUF_C_CLIENT_STATE_CONNECTED,
-  PROTOBUF_C_CLIENT_STATE_FAILED_WAITING,
-  PROTOBUF_C_CLIENT_STATE_FAILED,               /* if no autoreconnect */
-  PROTOBUF_C_CLIENT_STATE_DESTROYED
+  PROTOBUF_C_RPC_CLIENT_STATE_INIT,
+  PROTOBUF_C_RPC_CLIENT_STATE_NAME_LOOKUP,
+  PROTOBUF_C_RPC_CLIENT_STATE_CONNECTING,
+  PROTOBUF_C_RPC_CLIENT_STATE_CONNECTED,
+  PROTOBUF_C_RPC_CLIENT_STATE_FAILED_WAITING,
+  PROTOBUF_C_RPC_CLIENT_STATE_FAILED,               /* if no autoreconnect */
+  PROTOBUF_C_RPC_CLIENT_STATE_DESTROYED
 } ProtobufC_RPC_ClientState;
 
 typedef struct _Closure Closure;
@@ -70,22 +70,22 @@ error_handler (ProtobufC_RPC_Error_Code code,
 struct _ProtobufC_RPC_Client
 {
   ProtobufCService base_service;
-  ProtobufCDataBuffer incoming;
-  ProtobufCDataBuffer outgoing;
+  ProtobufCRPCDataBuffer incoming;
+  ProtobufCRPCDataBuffer outgoing;
   ProtobufCAllocator *allocator;
-  ProtobufCDispatch *dispatch;
+  ProtobufCRPCDispatch *dispatch;
   ProtobufC_RPC_AddressType address_type;
   char *name;
-  ProtobufC_FD fd;
+  ProtobufC_RPC_FD fd;
   protobuf_c_boolean autoreconnect;
   unsigned autoreconnect_millis;
-  ProtobufC_NameLookup_Func resolver;
+  ProtobufC_RPC_NameLookup_Func resolver;
   ProtobufC_RPC_Error_Func error_handler;
   void *error_handler_data;
   ProtobufC_RPC_ClientState state;
   union {
     struct {
-      ProtobufCDispatchIdle *idle;
+      ProtobufCRPCDispatchIdle *idle;
     } init;
     struct {
       protobuf_c_boolean pending;
@@ -99,7 +99,7 @@ struct _ProtobufC_RPC_Client
       Closure *closures;
     } connected;
     struct {
-      ProtobufCDispatchTimer *timer;
+      ProtobufCRPCDispatchTimer *timer;
       char *error_message;
     } failed_waiting;
     struct {
@@ -116,16 +116,16 @@ static void
 set_fd_nonblocking(int fd)
 {
   int flags = fcntl (fd, F_GETFL);
-  protobuf_c_assert (flags >= 0);
+  protobuf_c_rpc_assert (flags >= 0);
   fcntl (fd, F_SETFL, flags | O_NONBLOCK);
 }
 
 static void
-handle_autoreconnect_timeout (ProtobufCDispatch *dispatch,
+handle_autoreconnect_timeout (ProtobufCRPCDispatch *dispatch,
                           void              *func_data)
 {
   ProtobufC_RPC_Client *client = func_data;
-  protobuf_c_assert (client->state == PROTOBUF_C_CLIENT_STATE_FAILED_WAITING);
+  protobuf_c_rpc_assert (client->state == PROTOBUF_C_RPC_CLIENT_STATE_FAILED_WAITING);
   client->allocator->free (client->allocator,
                            client->info.failed_waiting.error_message);
   begin_name_lookup (client);
@@ -144,32 +144,32 @@ client_failed (ProtobufC_RPC_Client *client,
   Closure *closures = NULL;
   switch (client->state)
     {
-    case PROTOBUF_C_CLIENT_STATE_NAME_LOOKUP:
-      protobuf_c_assert (!client->info.name_lookup.pending);
+    case PROTOBUF_C_RPC_CLIENT_STATE_NAME_LOOKUP:
+      protobuf_c_rpc_assert (!client->info.name_lookup.pending);
       break;
-    case PROTOBUF_C_CLIENT_STATE_CONNECTING:
+    case PROTOBUF_C_RPC_CLIENT_STATE_CONNECTING:
       /* nothing to do */
       break;
-    case PROTOBUF_C_CLIENT_STATE_CONNECTED:
+    case PROTOBUF_C_RPC_CLIENT_STATE_CONNECTED:
       n_closures = client->info.connected.closures_alloced;
       closures = client->info.connected.closures;
       break;
 
       /* should not get here */
-    case PROTOBUF_C_CLIENT_STATE_INIT:
-    case PROTOBUF_C_CLIENT_STATE_FAILED_WAITING:
-    case PROTOBUF_C_CLIENT_STATE_FAILED:
-    case PROTOBUF_C_CLIENT_STATE_DESTROYED:
-      protobuf_c_assert (FALSE);
+    case PROTOBUF_C_RPC_CLIENT_STATE_INIT:
+    case PROTOBUF_C_RPC_CLIENT_STATE_FAILED_WAITING:
+    case PROTOBUF_C_RPC_CLIENT_STATE_FAILED:
+    case PROTOBUF_C_RPC_CLIENT_STATE_DESTROYED:
+      protobuf_c_rpc_assert (FALSE);
       break;
     }
   if (client->fd >= 0)
     {
-      protobuf_c_dispatch_close_fd (client->dispatch, client->fd);
+      protobuf_c_rpc_dispatch_close_fd (client->dispatch, client->fd);
       client->fd = -1;
     }
-  protobuf_c_data_buffer_reset (&client->incoming);
-  protobuf_c_data_buffer_reset (&client->outgoing);
+  protobuf_c_rpc_data_buffer_reset (&client->incoming);
+  protobuf_c_rpc_data_buffer_reset (&client->outgoing);
 
   /* Compute the message */
   va_start (args, format_str);
@@ -183,9 +183,9 @@ client_failed (ProtobufC_RPC_Client *client,
   /* go to one of the failed states */
   if (client->autoreconnect)
     {
-      client->state = PROTOBUF_C_CLIENT_STATE_FAILED_WAITING;
+      client->state = PROTOBUF_C_RPC_CLIENT_STATE_FAILED_WAITING;
       client->info.failed_waiting.timer
-        = protobuf_c_dispatch_add_timer_millis (client->dispatch,
+        = protobuf_c_rpc_dispatch_add_timer_millis (client->dispatch,
                                                 client->autoreconnect_millis,
                                                 handle_autoreconnect_timeout,
                                                 client);
@@ -193,7 +193,7 @@ client_failed (ProtobufC_RPC_Client *client,
     }
   else
     {
-      client->state = PROTOBUF_C_CLIENT_STATE_FAILED;
+      client->state = PROTOBUF_C_RPC_CLIENT_STATE_FAILED;
       client->info.failed.error_message = msg;
     }
 
@@ -225,7 +225,7 @@ errno_is_ignorable (int e)
 static void
 set_state_connected (ProtobufC_RPC_Client *client)
 {
-  client->state = PROTOBUF_C_CLIENT_STATE_CONNECTED;
+  client->state = PROTOBUF_C_RPC_CLIENT_STATE_CONNECTED;
 
   client->info.connected.closures_alloced = 1;
   client->info.connected.first_free_request_id = 1;
@@ -256,7 +256,7 @@ handle_client_fd_connect_events (int         fd,
   if (fd_errno == 0)
     {
       /* goto state CONNECTED */
-      protobuf_c_dispatch_watch_fd (client->dispatch,
+      protobuf_c_rpc_dispatch_watch_fd (client->dispatch,
                                     client->fd,
                                     0, NULL, NULL);
       set_state_connected (client);
@@ -280,9 +280,9 @@ begin_connecting (ProtobufC_RPC_Client *client,
                   struct sockaddr      *address,
                   size_t                addr_len)
 {
-  protobuf_c_assert (client->state == PROTOBUF_C_CLIENT_STATE_NAME_LOOKUP);
+  protobuf_c_rpc_assert (client->state == PROTOBUF_C_RPC_CLIENT_STATE_NAME_LOOKUP);
 
-  client->state = PROTOBUF_C_CLIENT_STATE_CONNECTING;
+  client->state = PROTOBUF_C_RPC_CLIENT_STATE_CONNECTING;
   client->fd = socket (address->sa_family, SOCK_STREAM, 0);
   if (client->fd < 0)
     {
@@ -295,9 +295,9 @@ begin_connecting (ProtobufC_RPC_Client *client,
       if (errno == EINPROGRESS)
         {
           /* register interest in fd */
-          protobuf_c_dispatch_watch_fd (client->dispatch,
+          protobuf_c_rpc_dispatch_watch_fd (client->dispatch,
                                         client->fd,
-                                        PROTOBUF_C_EVENT_READABLE|PROTOBUF_C_EVENT_WRITABLE,
+                                        PROTOBUF_C_RPC_EVENT_READABLE|PROTOBUF_C_RPC_EVENT_WRITABLE,
                                         handle_client_fd_connect_events,
                                         client);
           return;
@@ -316,8 +316,8 @@ handle_name_lookup_success (const uint8_t *address,
 {
   ProtobufC_RPC_Client *client = callback_data;
   struct sockaddr_in addr;
-  protobuf_c_assert (client->state == PROTOBUF_C_CLIENT_STATE_NAME_LOOKUP);
-  protobuf_c_assert (client->info.name_lookup.pending);
+  protobuf_c_rpc_assert (client->state == PROTOBUF_C_RPC_CLIENT_STATE_NAME_LOOKUP);
+  protobuf_c_rpc_assert (client->info.name_lookup.pending);
   client->info.name_lookup.pending = 0;
   if (client->info.name_lookup.destroyed_while_pending)
     {
@@ -336,8 +336,8 @@ handle_name_lookup_failure (const char    *error_message,
                             void          *callback_data)
 {
   ProtobufC_RPC_Client *client = callback_data;
-  protobuf_c_assert (client->state == PROTOBUF_C_CLIENT_STATE_NAME_LOOKUP);
-  protobuf_c_assert (client->info.name_lookup.pending);
+  protobuf_c_rpc_assert (client->state == PROTOBUF_C_RPC_CLIENT_STATE_NAME_LOOKUP);
+  protobuf_c_rpc_assert (client->info.name_lookup.pending);
   client->info.name_lookup.pending = 0;
   if (client->info.name_lookup.destroyed_while_pending)
     {
@@ -350,10 +350,10 @@ handle_name_lookup_failure (const char    *error_message,
 static void
 begin_name_lookup (ProtobufC_RPC_Client *client)
 {
-  protobuf_c_assert (client->state == PROTOBUF_C_CLIENT_STATE_INIT
-                 ||  client->state == PROTOBUF_C_CLIENT_STATE_FAILED_WAITING
-                 ||  client->state == PROTOBUF_C_CLIENT_STATE_FAILED);
-  client->state = PROTOBUF_C_CLIENT_STATE_NAME_LOOKUP;
+  protobuf_c_rpc_assert (client->state == PROTOBUF_C_RPC_CLIENT_STATE_INIT
+                 ||  client->state == PROTOBUF_C_RPC_CLIENT_STATE_FAILED_WAITING
+                 ||  client->state == PROTOBUF_C_RPC_CLIENT_STATE_FAILED);
+  client->state = PROTOBUF_C_RPC_CLIENT_STATE_NAME_LOOKUP;
   client->info.name_lookup.pending = 0;
   switch (client->address_type)
     {
@@ -404,11 +404,11 @@ begin_name_lookup (ProtobufC_RPC_Client *client)
 }
 
 static void
-handle_init_idle (ProtobufCDispatch *dispatch,
+handle_init_idle (ProtobufCRPCDispatch *dispatch,
                   void              *data)
 {
   ProtobufC_RPC_Client *client = data;
-  protobuf_c_assert (client->state == PROTOBUF_C_CLIENT_STATE_INIT);
+  protobuf_c_rpc_assert (client->state == PROTOBUF_C_RPC_CLIENT_STATE_INIT);
   begin_name_lookup (client);
 }
 
@@ -472,10 +472,10 @@ enqueue_request (ProtobufC_RPC_Client *client,
   const ProtobufCServiceDescriptor *desc = client->base_service.descriptor;
   const ProtobufCMethodDescriptor *method = desc->methods + method_index;
 
-  protobuf_c_assert (method_index < desc->n_methods);
+  protobuf_c_rpc_assert (method_index < desc->n_methods);
 
   /* Allocate request_id */
-  //protobuf_c_assert (client->state == PROTOBUF_C_CLIENT_STATE_CONNECTED);
+  //protobuf_c_rpc_assert (client->state == PROTOBUF_C_RPC_CLIENT_STATE_CONNECTED);
   if (client->info.connected.first_free_request_id == 0)
     grow_closure_array (client);
   request_id = client->info.connected.first_free_request_id;
@@ -491,12 +491,12 @@ enqueue_request (ProtobufC_RPC_Client *client,
   protobuf_c_message_pack (input, packed_data);
 
   /* Append to buffer */
-  protobuf_c_assert (sizeof (header) == 12);
+  protobuf_c_rpc_assert (sizeof (header) == 12);
   header.method_index = uint32_to_le (method_index);
   header.packed_size = uint32_to_le (packed_size);
   header.request_id = request_id;
-  protobuf_c_data_buffer_append (&client->outgoing, &header, 12);
-  protobuf_c_data_buffer_append (&client->outgoing, packed_data, packed_size);
+  protobuf_c_rpc_data_buffer_append (&client->outgoing, &header, 12);
+  protobuf_c_rpc_data_buffer_append (&client->outgoing, packed_data, packed_size);
 
   /* Clean up if not using alloca() */
   if (packed_size >= client->allocator->max_alloca)
@@ -514,10 +514,10 @@ handle_client_fd_events (int                fd,
                          void              *func_data)
 {
   ProtobufC_RPC_Client *client = func_data;
-  protobuf_c_assert (client->state == PROTOBUF_C_CLIENT_STATE_CONNECTED);
-  if (events & PROTOBUF_C_EVENT_WRITABLE)
+  protobuf_c_rpc_assert (client->state == PROTOBUF_C_RPC_CLIENT_STATE_CONNECTED);
+  if (events & PROTOBUF_C_RPC_EVENT_WRITABLE)
     {
-      int write_rv = protobuf_c_data_buffer_writev (&client->outgoing,
+      int write_rv = protobuf_c_rpc_data_buffer_writev (&client->outgoing,
                                                     client->fd);
       if (write_rv < 0 && !errno_is_ignorable (errno))
         {
@@ -528,14 +528,14 @@ handle_client_fd_events (int                fd,
         }
 
       if (client->outgoing.size == 0)
-        protobuf_c_dispatch_watch_fd (client->dispatch, client->fd,
-                                      PROTOBUF_C_EVENT_READABLE,
+        protobuf_c_rpc_dispatch_watch_fd (client->dispatch, client->fd,
+                                      PROTOBUF_C_RPC_EVENT_READABLE,
                                       handle_client_fd_events, client);
     }
-  if (events & PROTOBUF_C_EVENT_READABLE)
+  if (events & PROTOBUF_C_RPC_EVENT_READABLE)
     {
       /* do read */
-      int read_rv = protobuf_c_data_buffer_read_in_fd (&client->incoming,
+      int read_rv = protobuf_c_rpc_data_buffer_read_in_fd (&client->incoming,
                                                        client->fd);
       if (read_rv < 0)
         {
@@ -562,7 +562,7 @@ handle_client_fd_events (int                fd,
               unsigned status_code, method_index, message_length, request_id;
               Closure *closure;
               ProtobufCMessage *msg;
-              protobuf_c_data_buffer_peek (&client->incoming, header, sizeof (header));
+              protobuf_c_rpc_data_buffer_peek (&client->incoming, header, sizeof (header));
               status_code = uint32_from_le (header[0]);
               method_index = uint32_from_le (header[1]);
               message_length = uint32_from_le (header[2]);
@@ -582,14 +582,14 @@ handle_client_fd_events (int                fd,
               closure = client->info.connected.closures + (request_id - 1);
 
               /* Discard the RPC header */
-              protobuf_c_data_buffer_discard (&client->incoming, 16);
+              protobuf_c_rpc_data_buffer_discard (&client->incoming, 16);
 
-              if (status_code == PROTOBUF_C_STATUS_CODE_SUCCESS)
+              if (status_code == PROTOBUF_C_RPC_STATUS_CODE_SUCCESS)
               {
                  /* read message and unpack */
                  uint8_t *packed_data =
                     client->allocator->alloc (client->allocator, message_length);
-                 protobuf_c_data_buffer_read (&client->incoming, packed_data, message_length);
+                 protobuf_c_rpc_data_buffer_read (&client->incoming, packed_data, message_length);
 
                  /* TODO: use fast temporary allocator */
                  msg = protobuf_c_message_unpack (closure->response_type,
@@ -608,7 +608,7 @@ handle_client_fd_events (int                fd,
               else
               {
                  /* Server did not send a response message */
-                 protobuf_c_assert (message_length == 0);
+                 protobuf_c_rpc_assert (message_length == 0);
                  msg = NULL;
               }
 
@@ -630,12 +630,12 @@ handle_client_fd_events (int                fd,
 static void
 update_connected_client_watch (ProtobufC_RPC_Client *client)
 {
-  unsigned events = PROTOBUF_C_EVENT_READABLE;
-  protobuf_c_assert (client->state == PROTOBUF_C_CLIENT_STATE_CONNECTED);
-  protobuf_c_assert (client->fd >= 0);
+  unsigned events = PROTOBUF_C_RPC_EVENT_READABLE;
+  protobuf_c_rpc_assert (client->state == PROTOBUF_C_RPC_CLIENT_STATE_CONNECTED);
+  protobuf_c_rpc_assert (client->fd >= 0);
   if (client->outgoing.size > 0)
-    events |= PROTOBUF_C_EVENT_WRITABLE;
-  protobuf_c_dispatch_watch_fd (client->dispatch,
+    events |= PROTOBUF_C_RPC_EVENT_WRITABLE;
+  protobuf_c_rpc_dispatch_watch_fd (client->dispatch,
                                 client->fd,
                                 events,
                                 handle_client_fd_events, client);
@@ -649,16 +649,16 @@ invoke_client_rpc (ProtobufCService *service,
                    void             *closure_data)
 {
   ProtobufC_RPC_Client *client = (ProtobufC_RPC_Client *) service;
-  protobuf_c_assert (service->invoke == invoke_client_rpc);
+  protobuf_c_rpc_assert (service->invoke == invoke_client_rpc);
   switch (client->state)
     {
-    case PROTOBUF_C_CLIENT_STATE_INIT:
-    case PROTOBUF_C_CLIENT_STATE_NAME_LOOKUP:
-    case PROTOBUF_C_CLIENT_STATE_CONNECTING:
+    case PROTOBUF_C_RPC_CLIENT_STATE_INIT:
+    case PROTOBUF_C_RPC_CLIENT_STATE_NAME_LOOKUP:
+    case PROTOBUF_C_RPC_CLIENT_STATE_CONNECTING:
       enqueue_request (client, method_index, input, closure, closure_data);
       break;
       
-    case PROTOBUF_C_CLIENT_STATE_CONNECTED:
+    case PROTOBUF_C_RPC_CLIENT_STATE_CONNECTED:
       {
         int had_outgoing = (client->outgoing.size > 0);
         enqueue_request (client, method_index, input, closure, closure_data);
@@ -667,9 +667,9 @@ invoke_client_rpc (ProtobufCService *service,
       }
       break;
 
-    case PROTOBUF_C_CLIENT_STATE_FAILED_WAITING:
-    case PROTOBUF_C_CLIENT_STATE_FAILED:
-    case PROTOBUF_C_CLIENT_STATE_DESTROYED:
+    case PROTOBUF_C_RPC_CLIENT_STATE_FAILED_WAITING:
+    case PROTOBUF_C_RPC_CLIENT_STATE_FAILED:
+    case PROTOBUF_C_RPC_CLIENT_STATE_DESTROYED:
       closure (NULL, closure_data);
       break;
     }
@@ -685,42 +685,42 @@ destroy_client_rpc (ProtobufCService *service)
   Closure *closures = NULL;
   switch (state)
     {
-    case PROTOBUF_C_CLIENT_STATE_INIT:
-      protobuf_c_dispatch_remove_idle (client->info.init.idle);
+    case PROTOBUF_C_RPC_CLIENT_STATE_INIT:
+      protobuf_c_rpc_dispatch_remove_idle (client->info.init.idle);
       break;
-    case PROTOBUF_C_CLIENT_STATE_NAME_LOOKUP:
+    case PROTOBUF_C_RPC_CLIENT_STATE_NAME_LOOKUP:
       if (client->info.name_lookup.pending)
         {
           client->info.name_lookup.destroyed_while_pending = 1;
           return;
         }
       break;
-    case PROTOBUF_C_CLIENT_STATE_CONNECTING:
+    case PROTOBUF_C_RPC_CLIENT_STATE_CONNECTING:
       break;
-    case PROTOBUF_C_CLIENT_STATE_CONNECTED:
+    case PROTOBUF_C_RPC_CLIENT_STATE_CONNECTED:
       n_closures = client->info.connected.closures_alloced;
       closures = client->info.connected.closures;
       break;
-    case PROTOBUF_C_CLIENT_STATE_FAILED_WAITING:
-      protobuf_c_dispatch_remove_timer (client->info.failed_waiting.timer);
+    case PROTOBUF_C_RPC_CLIENT_STATE_FAILED_WAITING:
+      protobuf_c_rpc_dispatch_remove_timer (client->info.failed_waiting.timer);
       client->allocator->free (client->allocator, client->info.failed_waiting.timer);
       client->allocator->free (client->allocator, client->info.failed_waiting.error_message);
       break;
-    case PROTOBUF_C_CLIENT_STATE_FAILED:
+    case PROTOBUF_C_RPC_CLIENT_STATE_FAILED:
       client->allocator->free (client->allocator, client->info.failed.error_message);
       break;
-    case PROTOBUF_C_CLIENT_STATE_DESTROYED:
-      protobuf_c_assert (0);
+    case PROTOBUF_C_RPC_CLIENT_STATE_DESTROYED:
+      protobuf_c_rpc_assert (0);
       break;
     }
   if (client->fd >= 0)
     {
-      protobuf_c_dispatch_close_fd (client->dispatch, client->fd);
+      protobuf_c_rpc_dispatch_close_fd (client->dispatch, client->fd);
       client->fd = -1;
     }
-  protobuf_c_data_buffer_clear (&client->incoming);
-  protobuf_c_data_buffer_clear (&client->outgoing);
-  client->state = PROTOBUF_C_CLIENT_STATE_DESTROYED;
+  protobuf_c_rpc_data_buffer_clear (&client->incoming);
+  protobuf_c_rpc_data_buffer_clear (&client->outgoing);
+  client->state = PROTOBUF_C_RPC_CLIENT_STATE_DESTROYED;
   client->allocator->free (client->allocator, client->name);
 
   /* free closures only once we are in the destroyed state */
@@ -734,10 +734,10 @@ destroy_client_rpc (ProtobufCService *service)
 }
 
 static void
-trivial_sync_libc_resolver (ProtobufCDispatch *dispatch,
+trivial_sync_libc_resolver (ProtobufCRPCDispatch *dispatch,
                             const char        *name,
-                            ProtobufC_NameLookup_Found found_func,
-                            ProtobufC_NameLookup_Failed failed_func,
+                            ProtobufC_RPC_NameLookup_Found found_func,
+                            ProtobufC_RPC_NameLookup_Failed failed_func,
                             void *callback_data)
 {
   struct hostent *ent;
@@ -751,35 +751,35 @@ trivial_sync_libc_resolver (ProtobufCDispatch *dispatch,
 ProtobufCService *protobuf_c_rpc_client_new (ProtobufC_RPC_AddressType type,
                                              const char               *name,
                                              const ProtobufCServiceDescriptor *descriptor,
-                                             ProtobufCDispatch       *orig_dispatch)
+                                             ProtobufCRPCDispatch       *orig_dispatch)
 {
-  ProtobufCDispatch *dispatch = orig_dispatch ? orig_dispatch : protobuf_c_dispatch_default ();
-  ProtobufCAllocator *allocator = protobuf_c_dispatch_peek_allocator (dispatch);
+  ProtobufCRPCDispatch *dispatch = orig_dispatch ? orig_dispatch : protobuf_c_rpc_dispatch_default ();
+  ProtobufCAllocator *allocator = protobuf_c_rpc_dispatch_peek_allocator (dispatch);
   ProtobufC_RPC_Client *rv = allocator->alloc (allocator, sizeof (ProtobufC_RPC_Client));
   rv->base_service.descriptor = descriptor;
   rv->base_service.invoke = invoke_client_rpc;
   rv->base_service.destroy = destroy_client_rpc;
-  protobuf_c_data_buffer_init (&rv->incoming, allocator);
-  protobuf_c_data_buffer_init (&rv->outgoing, allocator);
+  protobuf_c_rpc_data_buffer_init (&rv->incoming, allocator);
+  protobuf_c_rpc_data_buffer_init (&rv->outgoing, allocator);
   rv->allocator = allocator;
   rv->dispatch = dispatch;
   rv->address_type = type;
   rv->name = strcpy (allocator->alloc (allocator, strlen (name) + 1), name);
-  rv->state = PROTOBUF_C_CLIENT_STATE_INIT;
+  rv->state = PROTOBUF_C_RPC_CLIENT_STATE_INIT;
   rv->fd = -1;
   rv->autoreconnect = 1;
   rv->autoreconnect_millis = 2*1000;
   rv->resolver = trivial_sync_libc_resolver;
   rv->error_handler = error_handler;
   rv->error_handler_data = "protobuf-c rpc client";
-  rv->info.init.idle = protobuf_c_dispatch_add_idle (dispatch, handle_init_idle, rv);
+  rv->info.init.idle = protobuf_c_rpc_dispatch_add_idle (dispatch, handle_init_idle, rv);
   return &rv->base_service;
 }
 
 protobuf_c_boolean
 protobuf_c_rpc_client_is_connected (ProtobufC_RPC_Client *client)
 {
-  return client->state == PROTOBUF_C_CLIENT_STATE_CONNECTED;
+  return client->state == PROTOBUF_C_RPC_CLIENT_STATE_CONNECTED;
 }
 
 void
@@ -829,7 +829,7 @@ struct _ServerRequest
 struct _ServerConnection
 {
   int fd;
-  ProtobufCDataBuffer incoming, outgoing;
+  ProtobufCRPCDataBuffer incoming, outgoing;
 
   ProtobufC_RPC_Server *server;
   ServerConnection *prev, *next;
@@ -852,13 +852,13 @@ struct _ProxyResponse
 
 struct _ProtobufC_RPC_Server
 {
-  ProtobufCDispatch *dispatch;
+  ProtobufCRPCDispatch *dispatch;
   ProtobufCAllocator *allocator;
   ProtobufCService *underlying;
   ProtobufC_RPC_AddressType address_type;
   char *bind_name;
   ServerConnection *first_connection, *last_connection;
-  ProtobufC_FD listening_fd;
+  ProtobufC_RPC_FD listening_fd;
 
   ServerRequest *recycled_requests;
 
@@ -887,10 +887,10 @@ server_connection_close (ServerConnection *conn)
   ProtobufCAllocator *allocator = conn->server->allocator;
 
   /* general cleanup */
-  protobuf_c_dispatch_close_fd (conn->server->dispatch, conn->fd);
+  protobuf_c_rpc_dispatch_close_fd (conn->server->dispatch, conn->fd);
   conn->fd = -1;
-  protobuf_c_data_buffer_clear (&conn->incoming);
-  protobuf_c_data_buffer_clear (&conn->outgoing);
+  protobuf_c_rpc_data_buffer_clear (&conn->incoming);
+  protobuf_c_rpc_data_buffer_clear (&conn->outgoing);
 
   /* remove this connection from the server's list */
   GSK_LIST_REMOVE (GET_CONNECTION_LIST (conn->server), conn);
@@ -1057,20 +1057,20 @@ server_connection_response_closure (const ProtobufCMessage *message,
     {
       /* send failed status */
       uint32_t header[4];
-      header[0] = uint32_to_le (PROTOBUF_C_STATUS_CODE_SERVICE_FAILED);
+      header[0] = uint32_to_le (PROTOBUF_C_RPC_STATUS_CODE_SERVICE_FAILED);
       header[1] = uint32_to_le (request->method_index);
       header[2] = 0;            /* no message */
       header[3] = request->request_id;
       protobuf_c_buffer_simple_append (&buffer_simple.base,
                                        16, (uint8_t *) header);
-      server_failed_literal (server, PROTOBUF_C_ERROR_CODE_BAD_REQUEST,
+      server_failed_literal (server, PROTOBUF_C_RPC_ERROR_CODE_BAD_REQUEST,
             "response message was malformed, sending failed status to client");
     }
   else
     {
       /* send success response */
       uint32_t header[4];
-      header[0] = uint32_to_le (PROTOBUF_C_STATUS_CODE_SUCCESS);
+      header[0] = uint32_to_le (PROTOBUF_C_RPC_STATUS_CODE_SUCCESS);
       header[1] = uint32_to_le (request->method_index);
       header[3] = request->request_id;
       protobuf_c_buffer_simple_append (&buffer_simple.base,
@@ -1094,13 +1094,13 @@ retry_write:
         {
           if (errno == EINTR || errno == EAGAIN)
             goto retry_write;
-          server_failed_literal (server, PROTOBUF_C_ERROR_CODE_PROXY_PROBLEM,
+          server_failed_literal (server, PROTOBUF_C_RPC_ERROR_CODE_PROXY_PROBLEM,
                                  "error writing to proxy-pipe");
           allocator->free (allocator, pr);
         }
       else if (rv < sizeof (void *))
         {
-          server_failed_literal (server, PROTOBUF_C_ERROR_CODE_PROXY_PROBLEM,
+          server_failed_literal (server, PROTOBUF_C_RPC_ERROR_CODE_PROXY_PROBLEM,
                                  "partial write to proxy-pipe");
           allocator->free (allocator, pr);
         }
@@ -1115,11 +1115,11 @@ retry_write:
     {
       ServerConnection *conn = request->conn;
       protobuf_c_boolean must_set_output_watch = (conn->outgoing.size == 0);
-      protobuf_c_data_buffer_append (&conn->outgoing, buffer_simple.data, buffer_simple.len);
+      protobuf_c_rpc_data_buffer_append (&conn->outgoing, buffer_simple.data, buffer_simple.len);
       if (must_set_output_watch)
-        protobuf_c_dispatch_watch_fd (conn->server->dispatch,
+        protobuf_c_rpc_dispatch_watch_fd (conn->server->dispatch,
                                       conn->fd,
-                                      PROTOBUF_C_EVENT_READABLE|PROTOBUF_C_EVENT_WRITABLE,
+                                      PROTOBUF_C_RPC_EVENT_READABLE|PROTOBUF_C_RPC_EVENT_WRITABLE,
                                       handle_server_connection_events,
                                       conn);
       GSK_LIST_REMOVE (GET_PENDING_REQUEST_LIST (conn), request);
@@ -1138,15 +1138,15 @@ handle_server_connection_events (int fd,
   ServerConnection *conn = data;
   ProtobufCService *service = conn->server->underlying;
   ProtobufCAllocator *allocator = conn->server->allocator;
-  if (events & PROTOBUF_C_EVENT_READABLE)
+  if (events & PROTOBUF_C_RPC_EVENT_READABLE)
     {
-      int read_rv = protobuf_c_data_buffer_read_in_fd (&conn->incoming, fd);
+      int read_rv = protobuf_c_rpc_data_buffer_read_in_fd (&conn->incoming, fd);
       if (read_rv < 0)
         {
           if (!errno_is_ignorable (errno))
             {
               server_connection_failed (conn,
-                                        PROTOBUF_C_ERROR_CODE_CLIENT_TERMINATED,
+                                        PROTOBUF_C_RPC_ERROR_CODE_CLIENT_TERMINATED,
                                         "reading from file-descriptor: %s",
                                         strerror (errno));
               return;
@@ -1156,7 +1156,7 @@ handle_server_connection_events (int fd,
         {
           if (conn->first_pending_request != NULL)
             server_connection_failed (conn,
-                                      PROTOBUF_C_ERROR_CODE_CLIENT_TERMINATED,
+                                      PROTOBUF_C_RPC_ERROR_CODE_CLIENT_TERMINATED,
                                       "closed while calls pending");
           else
             server_connection_close (conn);
@@ -1170,7 +1170,7 @@ handle_server_connection_events (int fd,
             uint8_t *packed_data;
             ProtobufCMessage *message;
             ServerRequest *server_request;
-            protobuf_c_data_buffer_peek (&conn->incoming, header, 12);
+            protobuf_c_rpc_data_buffer_peek (&conn->incoming, header, 12);
             method_index = uint32_from_le (header[0]);
             message_length = uint32_from_le (header[1]);
             request_id = header[2];             /* store in whatever endianness it comes in */
@@ -1181,15 +1181,15 @@ handle_server_connection_events (int fd,
             if (method_index >= conn->server->underlying->descriptor->n_methods)
               {
                 server_connection_failed (conn,
-                                          PROTOBUF_C_ERROR_CODE_BAD_REQUEST,
+                                          PROTOBUF_C_RPC_ERROR_CODE_BAD_REQUEST,
                                           "bad method_index %u", method_index);
                 return;
               }
 
             /* Read message */
-            protobuf_c_data_buffer_discard (&conn->incoming, 12);
+            protobuf_c_rpc_data_buffer_discard (&conn->incoming, 12);
             packed_data = allocator->alloc (allocator, message_length);
-            protobuf_c_data_buffer_read (&conn->incoming, packed_data, message_length);
+            protobuf_c_rpc_data_buffer_read (&conn->incoming, packed_data, message_length);
 
             /* Unpack message */
             message = protobuf_c_message_unpack (service->descriptor->methods[method_index].input,
@@ -1198,7 +1198,7 @@ handle_server_connection_events (int fd,
             if (message == NULL)
               {
                 server_connection_failed (conn,
-                                          PROTOBUF_C_ERROR_CODE_BAD_REQUEST,
+                                          PROTOBUF_C_RPC_ERROR_CODE_BAD_REQUEST,
                                           "error unpacking message");
                 return;
               }
@@ -1210,23 +1210,23 @@ handle_server_connection_events (int fd,
             protobuf_c_message_free_unpacked (message, allocator);
           }
     }
-  if ((events & PROTOBUF_C_EVENT_WRITABLE) != 0
+  if ((events & PROTOBUF_C_RPC_EVENT_WRITABLE) != 0
     && conn->outgoing.size > 0)
     {
-      int write_rv = protobuf_c_data_buffer_writev (&conn->outgoing, fd);
+      int write_rv = protobuf_c_rpc_data_buffer_writev (&conn->outgoing, fd);
       if (write_rv < 0)
         {
           if (!errno_is_ignorable (errno))
             {
               server_connection_failed (conn,
-                                        PROTOBUF_C_ERROR_CODE_CLIENT_TERMINATED,
+                                        PROTOBUF_C_RPC_ERROR_CODE_CLIENT_TERMINATED,
                                         "writing to file-descriptor: %s",
                                         strerror (errno));
               return;
             }
         }
       if (conn->outgoing.size == 0)
-        protobuf_c_dispatch_watch_fd (conn->server->dispatch, conn->fd, PROTOBUF_C_EVENT_READABLE,
+        protobuf_c_rpc_dispatch_watch_fd (conn->server->dispatch, conn->fd, PROTOBUF_C_RPC_EVENT_READABLE,
                                       handle_server_connection_events, conn);
     }
 }
@@ -1252,25 +1252,25 @@ handle_server_listener_readable (int fd,
     }
   conn = allocator->alloc (allocator, sizeof (ServerConnection));
   conn->fd = new_fd;
-  protobuf_c_data_buffer_init (&conn->incoming, server->allocator);
-  protobuf_c_data_buffer_init (&conn->outgoing, server->allocator);
+  protobuf_c_rpc_data_buffer_init (&conn->incoming, server->allocator);
+  protobuf_c_rpc_data_buffer_init (&conn->outgoing, server->allocator);
   conn->n_pending_requests = 0;
   conn->first_pending_request = conn->last_pending_request = NULL;
   conn->server = server;
   GSK_LIST_APPEND (GET_CONNECTION_LIST (server), conn);
-  protobuf_c_dispatch_watch_fd (server->dispatch, conn->fd, PROTOBUF_C_EVENT_READABLE,
+  protobuf_c_rpc_dispatch_watch_fd (server->dispatch, conn->fd, PROTOBUF_C_RPC_EVENT_READABLE,
                                 handle_server_connection_events, conn);
 }
 
 static ProtobufC_RPC_Server *
-server_new_from_fd (ProtobufC_FD              listening_fd,
+server_new_from_fd (ProtobufC_RPC_FD              listening_fd,
                     ProtobufC_RPC_AddressType address_type,
                     const char               *bind_name,
                     ProtobufCService         *service,
-                    ProtobufCDispatch       *orig_dispatch)
+                    ProtobufCRPCDispatch       *orig_dispatch)
 {
-  ProtobufCDispatch *dispatch = orig_dispatch ? orig_dispatch : protobuf_c_dispatch_default ();
-  ProtobufCAllocator *allocator = protobuf_c_dispatch_peek_allocator (dispatch);
+  ProtobufCRPCDispatch *dispatch = orig_dispatch ? orig_dispatch : protobuf_c_rpc_dispatch_default ();
+  ProtobufCAllocator *allocator = protobuf_c_rpc_dispatch_peek_allocator (dispatch);
   ProtobufC_RPC_Server *server = allocator->alloc (allocator, sizeof (ProtobufC_RPC_Server));
   server->dispatch = dispatch;
   server->allocator = allocator;
@@ -1289,7 +1289,7 @@ server_new_from_fd (ProtobufC_FD              listening_fd,
   server->proxy_extra_data_len = 0;
   strcpy (server->bind_name, bind_name);
   set_fd_nonblocking (listening_fd);
-  protobuf_c_dispatch_watch_fd (dispatch, listening_fd, PROTOBUF_C_EVENT_READABLE, 
+  protobuf_c_rpc_dispatch_watch_fd (dispatch, listening_fd, PROTOBUF_C_RPC_EVENT_READABLE, 
                                 handle_server_listener_readable, server);
   return server;
 }
@@ -1352,7 +1352,7 @@ ProtobufC_RPC_Server *
 protobuf_c_rpc_server_new       (ProtobufC_RPC_AddressType type,
                                  const char               *name,
                                  ProtobufCService         *service,
-                                 ProtobufCDispatch       *dispatch)
+                                 ProtobufCRPCDispatch       *dispatch)
 {
   int fd = -1;
   int protocol_family;
@@ -1385,7 +1385,7 @@ protobuf_c_rpc_server_new       (ProtobufC_RPC_AddressType type,
       address = (struct sockaddr *) (&addr_in);
       break;
     default:
-    protobuf_c_assert (0);
+    protobuf_c_rpc_assert (0);
     }
 
   fd = socket (protocol_family, SOCK_STREAM, 0);
@@ -1429,7 +1429,7 @@ protobuf_c_rpc_server_destroy (ProtobufC_RPC_Server *server,
       server->allocator->free (server->allocator, req);
     }
 
-  protobuf_c_dispatch_close_fd (server->dispatch, server->listening_fd);
+  protobuf_c_rpc_dispatch_close_fd (server->dispatch, server->listening_fd);
 
   if (destroy_underlying)
     protobuf_c_service_destroy (server->underlying);
@@ -1442,7 +1442,7 @@ protobuf_c_rpc_server_destroy (ProtobufC_RPC_Server *server,
 /* Number of proxied requests to try to grab in a single read */
 #define PROXY_BUF_SIZE   256
 static void
-handle_proxy_pipe_readable (ProtobufC_FD   fd,
+handle_proxy_pipe_readable (ProtobufC_RPC_FD   fd,
                             unsigned       events,
                             void          *callback_data)
 {
@@ -1472,11 +1472,11 @@ handle_proxy_pipe_readable (ProtobufC_FD   fd,
         {
           ServerConnection *conn = request->conn;
           protobuf_c_boolean must_set_output_watch = (conn->outgoing.size == 0);
-          protobuf_c_data_buffer_append (&conn->outgoing, (uint8_t*)(pr+1), pr->len);
+          protobuf_c_rpc_data_buffer_append (&conn->outgoing, (uint8_t*)(pr+1), pr->len);
           if (must_set_output_watch)
-            protobuf_c_dispatch_watch_fd (conn->server->dispatch,
+            protobuf_c_rpc_dispatch_watch_fd (conn->server->dispatch,
                                           conn->fd,
-                                          PROTOBUF_C_EVENT_READABLE|PROTOBUF_C_EVENT_WRITABLE,
+                                          PROTOBUF_C_RPC_EVENT_READABLE|PROTOBUF_C_RPC_EVENT_WRITABLE,
                                           handle_server_connection_events,
                                           conn);
           GSK_LIST_REMOVE (GET_PENDING_REQUEST_LIST (conn), request);
@@ -1502,7 +1502,7 @@ retry_pipe:
     {
       if (errno == EINTR || errno == EAGAIN)
         goto retry_pipe;
-      server_failed_literal (server, PROTOBUF_C_ERROR_CODE_PROXY_PROBLEM,
+      server_failed_literal (server, PROTOBUF_C_RPC_ERROR_CODE_PROXY_PROBLEM,
                              "error creating pipe for thread-proxying");
       return;
     }
@@ -1510,8 +1510,8 @@ retry_pipe:
   /* make the read side non-blocking, since we will use it from the main-loop;
      leave the write side blocking, since it will be used from foreign threads */
   set_fd_nonblocking (server->proxy_pipe[0]);
-  protobuf_c_dispatch_watch_fd (server->dispatch, server->proxy_pipe[0],
-                                PROTOBUF_C_EVENT_READABLE,
+  protobuf_c_rpc_dispatch_watch_fd (server->dispatch, server->proxy_pipe[0],
+                                PROTOBUF_C_RPC_EVENT_READABLE,
                                 handle_proxy_pipe_readable, server);
 }
 

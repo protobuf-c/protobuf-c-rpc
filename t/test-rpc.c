@@ -120,25 +120,25 @@ test_service (ProtobufCService *service)
   is_done = 0;
   foo__dir_lookup__by_name (service, &name, test_dave_closure, &is_done);
   while (!is_done)
-    protobuf_c_dispatch_run (protobuf_c_dispatch_default ());
+    protobuf_c_rpc_dispatch_run (protobuf_c_rpc_dispatch_default ());
 
   name.name = "joe the plumber";
   is_done = 0;
   foo__dir_lookup__by_name (service, &name, test_joe_the_plumber_closure, &is_done);
   while (!is_done)
-    protobuf_c_dispatch_run (protobuf_c_dispatch_default ());
+    protobuf_c_rpc_dispatch_run (protobuf_c_rpc_dispatch_default ());
 
   name.name = "asdfvcvzxsa";
   is_done = 0;
   foo__dir_lookup__by_name (service, &name, test_not_found_closure, &is_done);
   while (!is_done)
-    protobuf_c_dispatch_run (protobuf_c_dispatch_default ());
+    protobuf_c_rpc_dispatch_run (protobuf_c_rpc_dispatch_default ());
 
   name.name = NULL;
   is_done = 0;
   foo__dir_lookup__by_name (service, &name, test_defunct_closure, &is_done);
   while (!is_done)
-    protobuf_c_dispatch_run (protobuf_c_dispatch_default ());
+    protobuf_c_rpc_dispatch_run (protobuf_c_rpc_dispatch_default ());
 }
 static void
 test_defunct_client (ProtobufCService *service)
@@ -150,24 +150,24 @@ test_defunct_client (ProtobufCService *service)
   is_done = 0;
   foo__dir_lookup__by_name (service, &name, test_defunct_closure, &is_done);
   while (!is_done)
-    protobuf_c_dispatch_run (protobuf_c_dispatch_default ());
+    protobuf_c_rpc_dispatch_run (protobuf_c_rpc_dispatch_default ());
 
   name.name = "joe the plumber";
   is_done = 0;
   foo__dir_lookup__by_name (service, &name, test_defunct_closure, &is_done);
   while (!is_done)
-    protobuf_c_dispatch_run (protobuf_c_dispatch_default ());
+    protobuf_c_rpc_dispatch_run (protobuf_c_rpc_dispatch_default ());
 
   name.name = "asdfvcvzxsa";
   is_done = 0;
   foo__dir_lookup__by_name (service, &name, test_defunct_closure, &is_done);
   while (!is_done)
-    protobuf_c_dispatch_run (protobuf_c_dispatch_default ());
+    protobuf_c_rpc_dispatch_run (protobuf_c_rpc_dispatch_default ());
 }
 
 /* --- main() --- */
 static void
-set_boolean_true (ProtobufCDispatch *dispatch,
+set_boolean_true (ProtobufCRPCDispatch *dispatch,
                   void              *func_data)
 {
   (void) dispatch;
@@ -176,7 +176,7 @@ set_boolean_true (ProtobufCDispatch *dispatch,
 
 static protobuf_c_boolean
 pretend_we_are_in_another_thread (ProtobufC_RPC_Server *server,
-                                  ProtobufCDispatch    *dispatch,
+                                  ProtobufCRPCDispatch    *dispatch,
                                   void                 *data)
 {
   return 0;             /* indicate we are NOT in RPC thread */
@@ -187,11 +187,11 @@ static void test_client_create_destroy (void)
    ProtobufCService *rpc_service =
       protobuf_c_rpc_client_new(PROTOBUF_C_RPC_ADDRESS_LOCAL, "test.socket", NULL, NULL);
 
-   protobuf_c_dispatch_run(protobuf_c_dispatch_default());
+   protobuf_c_rpc_dispatch_run(protobuf_c_rpc_dispatch_default());
 
    rpc_service->destroy(rpc_service);
 
-   protobuf_c_dispatch_destroy_default();
+   protobuf_c_rpc_dispatch_destroy_default();
 }
 
 int main()
@@ -218,12 +218,12 @@ int main()
   client = (ProtobufC_RPC_Client *) remote_service;
   protobuf_c_rpc_client_set_autoreconnect_period (client, 10);
   is_done = 0;
-  protobuf_c_dispatch_add_timer_millis (protobuf_c_dispatch_default (),
+  protobuf_c_rpc_dispatch_add_timer_millis (protobuf_c_rpc_dispatch_default (),
                                         250, set_boolean_true, &is_done);
   message ("verify client cannot connect");
   while (!is_done)
     {
-      protobuf_c_dispatch_run (protobuf_c_dispatch_default ());
+      protobuf_c_rpc_dispatch_run (protobuf_c_rpc_dispatch_default ());
       assert (!protobuf_c_rpc_client_is_connected (client));
     }
   message ("testing unconnected client");
@@ -242,16 +242,16 @@ int main()
   /* technically, there's no way to know how long it'll take to connect
      if the machine is heavily loaded.  We give 250 millis,
      which should be ample on an unloaded system. */
-  protobuf_c_dispatch_add_timer_millis (protobuf_c_dispatch_default (),
+  protobuf_c_rpc_dispatch_add_timer_millis (protobuf_c_rpc_dispatch_default (),
                                         250, set_boolean_true, &is_done);
   while (!is_done && !protobuf_c_rpc_client_is_connected (client))
-    protobuf_c_dispatch_run (protobuf_c_dispatch_default ());
+    protobuf_c_rpc_dispatch_run (protobuf_c_rpc_dispatch_default ());
   if (!protobuf_c_rpc_client_is_connected (client))
     assert(0);          /* operation timed-out; could be high machine load */
 
   /* wait for the timer to elapse, since that's laziest way to handle it. */
   while (!is_done)
-    protobuf_c_dispatch_run (protobuf_c_dispatch_default ());
+    protobuf_c_rpc_dispatch_run (protobuf_c_rpc_dispatch_default ());
 
   /* Test the client */
   message ("testing client");
@@ -273,10 +273,10 @@ int main()
                                       NULL);
   assert (server != NULL);
   is_done = 0;
-  protobuf_c_dispatch_add_timer_millis (protobuf_c_dispatch_default (),
+  protobuf_c_rpc_dispatch_add_timer_millis (protobuf_c_rpc_dispatch_default (),
                                         250, set_boolean_true, &is_done);
   while (!is_done)
-    protobuf_c_dispatch_run (protobuf_c_dispatch_default ());
+    protobuf_c_rpc_dispatch_run (protobuf_c_rpc_dispatch_default ());
   assert (protobuf_c_rpc_client_is_connected (client));
 
   /* Test the client again, for kicks. */
@@ -295,7 +295,7 @@ int main()
   message ("destroying server");
   protobuf_c_rpc_server_destroy (server, 0);
 
-  protobuf_c_dispatch_destroy_default ();
+  protobuf_c_rpc_dispatch_destroy_default ();
 
   message ("creating and destroying a client");
   test_client_create_destroy();

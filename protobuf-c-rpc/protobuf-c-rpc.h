@@ -1,6 +1,9 @@
 #ifndef __PROTOBUF_C_RPC_H_
 #define __PROTOBUF_C_RPC_H_
 
+#include <protobuf-c/protobuf-c.h>
+#include <protobuf-c-rpc/protobuf-c-rpc-dispatch.h>
+
 /* Protocol is:
  *    client issues request with header:
  *         method_index              32-bit little-endian
@@ -12,7 +15,6 @@
  *         message_length            32-bit little-endian
  *         request_id                32-bit any-endian
  */
-#include "protobuf-c-rpc-dispatch.h"
 
 typedef enum
 {
@@ -22,18 +24,18 @@ typedef enum
 
 typedef enum
 {
-  PROTOBUF_C_ERROR_CODE_HOST_NOT_FOUND,
-  PROTOBUF_C_ERROR_CODE_CONNECTION_REFUSED,
-  PROTOBUF_C_ERROR_CODE_CLIENT_TERMINATED,
-  PROTOBUF_C_ERROR_CODE_BAD_REQUEST,
-  PROTOBUF_C_ERROR_CODE_PROXY_PROBLEM
+  PROTOBUF_C_RPC_ERROR_CODE_HOST_NOT_FOUND,
+  PROTOBUF_C_RPC_ERROR_CODE_CONNECTION_REFUSED,
+  PROTOBUF_C_RPC_ERROR_CODE_CLIENT_TERMINATED,
+  PROTOBUF_C_RPC_ERROR_CODE_BAD_REQUEST,
+  PROTOBUF_C_RPC_ERROR_CODE_PROXY_PROBLEM
 } ProtobufC_RPC_Error_Code;
 
 typedef enum
 {
-  PROTOBUF_C_STATUS_CODE_SUCCESS,
-  PROTOBUF_C_STATUS_CODE_SERVICE_FAILED,
-  PROTOBUF_C_STATUS_CODE_TOO_MANY_PENDING
+  PROTOBUF_C_RPC_STATUS_CODE_SUCCESS,
+  PROTOBUF_C_RPC_STATUS_CODE_SERVICE_FAILED,
+  PROTOBUF_C_RPC_STATUS_CODE_TOO_MANY_PENDING
 } ProtobufC_RPC_Status_Code;
 
 typedef void (*ProtobufC_RPC_Error_Func)   (ProtobufC_RPC_Error_Code code,
@@ -47,7 +49,7 @@ typedef struct _ProtobufC_RPC_Client ProtobufC_RPC_Client;
 ProtobufCService *protobuf_c_rpc_client_new (ProtobufC_RPC_AddressType type,
                                              const char               *name,
                                              const ProtobufCServiceDescriptor *descriptor,
-                                             ProtobufCDispatch       *dispatch /* or NULL */
+                                             ProtobufCRPCDispatch       *dispatch /* or NULL */
                                             );
 
 /* forcing the client to connect */
@@ -66,17 +68,17 @@ protobuf_c_rpc_client_connect (ProtobufC_RPC_Client *client);
 
 /* Pluginable async dns hooks */
 /* TODO: use adns library or port evdns? ugh */
-typedef void (*ProtobufC_NameLookup_Found) (const uint8_t *address,
+typedef void (*ProtobufC_RPC_NameLookup_Found) (const uint8_t *address,
                                             void          *callback_data);
-typedef void (*ProtobufC_NameLookup_Failed)(const char    *error_message,
+typedef void (*ProtobufC_RPC_NameLookup_Failed)(const char    *error_message,
                                             void          *callback_data);
-typedef void (*ProtobufC_NameLookup_Func)  (ProtobufCDispatch *dispatch,
+typedef void (*ProtobufC_RPC_NameLookup_Func)  (ProtobufCRPCDispatch *dispatch,
                                             const char        *name,
-                                            ProtobufC_NameLookup_Found found_func,
-                                            ProtobufC_NameLookup_Failed failed_func,
+                                            ProtobufC_RPC_NameLookup_Found found_func,
+                                            ProtobufC_RPC_NameLookup_Failed failed_func,
                                             void *callback_data);
 void protobuf_c_rpc_client_set_name_resolver (ProtobufC_RPC_Client *client,
-                                              ProtobufC_NameLookup_Func resolver);
+                                              ProtobufC_RPC_NameLookup_Func resolver);
 
 /* Error handling */
 void protobuf_c_rpc_client_set_error_handler (ProtobufC_RPC_Client *client,
@@ -103,7 +105,7 @@ ProtobufC_RPC_Server *
      protobuf_c_rpc_server_new        (ProtobufC_RPC_AddressType type,
                                        const char               *name,
                                        ProtobufCService         *service,
-                                       ProtobufCDispatch       *dispatch /* or NULL */
+                                       ProtobufCRPCDispatch       *dispatch /* or NULL */
                                       );
 
 ProtobufCService *
@@ -122,7 +124,7 @@ void protobuf_c_rpc_server_set_autotimeout (ProtobufC_RPC_Server *server,
 
 typedef protobuf_c_boolean
           (*ProtobufC_RPC_IsRpcThreadFunc) (ProtobufC_RPC_Server *server,
-                                            ProtobufCDispatch    *dispatch,
+                                            ProtobufCRPCDispatch    *dispatch,
                                             void                 *is_rpc_data);
 void protobuf_c_rpc_server_configure_threading (ProtobufC_RPC_Server *server,
                                                 ProtobufC_RPC_IsRpcThreadFunc func,

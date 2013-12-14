@@ -502,7 +502,7 @@ G_STMT_START{                                                                 \
 #define GSK_RBTREE_NEXT_(top,type,is_red,set_is_red,parent,left,right,comparator, in, out)  \
 G_STMT_START{                                                                 \
   type _gsk_next_at = (in);                                                   \
-  protobuf_c_assert (_gsk_next_at != NULL);                                            \
+  protobuf_c_rpc_assert (_gsk_next_at != NULL);                                            \
   if (_gsk_next_at->right != NULL)                                            \
     {                                                                         \
       _gsk_next_at = _gsk_next_at->right;                                     \

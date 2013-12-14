@@ -26,115 +26,115 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __PROTOBUF_C_RPC_DISPATCH_H_
-#define __PROTOBUF_C_RPC_DISPATCH_H_
+#ifndef __PROTOBUF_C_RPC_RPC_DISPATCH_H_
+#define __PROTOBUF_C_RPC_RPC_DISPATCH_H_
 
-typedef struct _ProtobufCDispatch ProtobufCDispatch;
-typedef struct _ProtobufCDispatchTimer ProtobufCDispatchTimer;
-typedef struct _ProtobufCDispatchIdle ProtobufCDispatchIdle;
+typedef struct _ProtobufCRPCDispatch ProtobufCRPCDispatch;
+typedef struct _ProtobufCRPCDispatchTimer ProtobufCRPCDispatchTimer;
+typedef struct _ProtobufCRPCDispatchIdle ProtobufCRPCDispatchIdle;
 
 #include <protobuf-c/protobuf-c.h>
 
 typedef enum
 {
-  PROTOBUF_C_EVENT_READABLE = (1<<0),
-  PROTOBUF_C_EVENT_WRITABLE = (1<<1)
-} ProtobufC_Events;
+  PROTOBUF_C_RPC_EVENT_READABLE = (1<<0),
+  PROTOBUF_C_RPC_EVENT_WRITABLE = (1<<1)
+} ProtobufC_RPC_Events;
 
 #ifdef WIN32
-typedef SOCKET ProtobufC_FD;
+typedef SOCKET ProtobufC_RPC_FD;
 #else
-typedef int ProtobufC_FD;
+typedef int ProtobufC_RPC_FD;
 #endif
 
 /* Create or destroy a Dispatch */
-ProtobufCDispatch  *protobuf_c_dispatch_new (ProtobufCAllocator *allocator);
-void                protobuf_c_dispatch_free(ProtobufCDispatch *dispatch);
+ProtobufCRPCDispatch  *protobuf_c_rpc_dispatch_new (ProtobufCAllocator *allocator);
+void                protobuf_c_rpc_dispatch_free(ProtobufCRPCDispatch *dispatch);
 
-ProtobufCDispatch  *protobuf_c_dispatch_default (void);
+ProtobufCRPCDispatch  *protobuf_c_rpc_dispatch_default (void);
 
-ProtobufCAllocator *protobuf_c_dispatch_peek_allocator (ProtobufCDispatch *);
+ProtobufCAllocator *protobuf_c_rpc_dispatch_peek_allocator (ProtobufCRPCDispatch *);
 
-typedef void (*ProtobufCDispatchCallback)  (ProtobufC_FD   fd,
+typedef void (*ProtobufCRPCDispatchCallback)  (ProtobufC_RPC_FD   fd,
                                             unsigned       events,
                                             void          *callback_data);
 
 /* Registering file-descriptors to watch. */
-void  protobuf_c_dispatch_watch_fd (ProtobufCDispatch *dispatch,
-                                    ProtobufC_FD        fd,
+void  protobuf_c_rpc_dispatch_watch_fd (ProtobufCRPCDispatch *dispatch,
+                                    ProtobufC_RPC_FD        fd,
                                     unsigned            events,
-                                    ProtobufCDispatchCallback callback,
+                                    ProtobufCRPCDispatchCallback callback,
                                     void               *callback_data);
-void  protobuf_c_dispatch_close_fd (ProtobufCDispatch *dispatch,
-                                    ProtobufC_FD        fd);
-void  protobuf_c_dispatch_fd_closed(ProtobufCDispatch *dispatch,
-                                    ProtobufC_FD        fd);
+void  protobuf_c_rpc_dispatch_close_fd (ProtobufCRPCDispatch *dispatch,
+                                    ProtobufC_RPC_FD        fd);
+void  protobuf_c_rpc_dispatch_fd_closed(ProtobufCRPCDispatch *dispatch,
+                                    ProtobufC_RPC_FD        fd);
 
 /* Timers */
-typedef void (*ProtobufCDispatchTimerFunc) (ProtobufCDispatch *dispatch,
+typedef void (*ProtobufCRPCDispatchTimerFunc) (ProtobufCRPCDispatch *dispatch,
                                             void              *func_data);
-ProtobufCDispatchTimer *
-      protobuf_c_dispatch_add_timer(ProtobufCDispatch *dispatch,
+ProtobufCRPCDispatchTimer *
+      protobuf_c_rpc_dispatch_add_timer(ProtobufCRPCDispatch *dispatch,
                                     unsigned           timeout_secs,
                                     unsigned           timeout_usecs,
-                                    ProtobufCDispatchTimerFunc func,
+                                    ProtobufCRPCDispatchTimerFunc func,
                                     void               *func_data);
-ProtobufCDispatchTimer *
-      protobuf_c_dispatch_add_timer_millis
-                                   (ProtobufCDispatch *dispatch,
+ProtobufCRPCDispatchTimer *
+      protobuf_c_rpc_dispatch_add_timer_millis
+                                   (ProtobufCRPCDispatch *dispatch,
                                     unsigned           milliseconds,
-                                    ProtobufCDispatchTimerFunc func,
+                                    ProtobufCRPCDispatchTimerFunc func,
                                     void               *func_data);
-void  protobuf_c_dispatch_remove_timer (ProtobufCDispatchTimer *);
+void  protobuf_c_rpc_dispatch_remove_timer (ProtobufCRPCDispatchTimer *);
 
 /* Idle functions */
-typedef void (*ProtobufCDispatchIdleFunc)   (ProtobufCDispatch *dispatch,
+typedef void (*ProtobufCRPCDispatchIdleFunc)   (ProtobufCRPCDispatch *dispatch,
                                              void               *func_data);
-ProtobufCDispatchIdle *
-      protobuf_c_dispatch_add_idle (ProtobufCDispatch *dispatch,
-                                    ProtobufCDispatchIdleFunc func,
+ProtobufCRPCDispatchIdle *
+      protobuf_c_rpc_dispatch_add_idle (ProtobufCRPCDispatch *dispatch,
+                                    ProtobufCRPCDispatchIdleFunc func,
                                     void               *func_data);
-void  protobuf_c_dispatch_remove_idle (ProtobufCDispatchIdle *);
+void  protobuf_c_rpc_dispatch_remove_idle (ProtobufCRPCDispatchIdle *);
 
 /* --- API for use in standalone application --- */
 /* Where you are happy just to run poll(2). */
 
-/* protobuf_c_dispatch_run() 
+/* protobuf_c_rpc_dispatch_run() 
  * Run one main-loop iteration, using poll(2) (or some system-level event system);
  * 'timeout' is in milliseconds, -1 for no timeout.
  */
-void  protobuf_c_dispatch_run      (ProtobufCDispatch *dispatch);
+void  protobuf_c_rpc_dispatch_run      (ProtobufCRPCDispatch *dispatch);
 
 
 /* --- API for those who want to embed a dispatch into their own main-loop --- */
 typedef struct {
-  ProtobufC_FD fd;
-  ProtobufC_Events events;
-} ProtobufC_FDNotify;
+  ProtobufC_RPC_FD fd;
+  ProtobufC_RPC_Events events;
+} ProtobufC_RPC_FDNotify;
 
 typedef struct {
-  ProtobufC_FD fd;
-  ProtobufC_Events old_events;
-  ProtobufC_Events events;
-} ProtobufC_FDNotifyChange;
+  ProtobufC_RPC_FD fd;
+  ProtobufC_RPC_Events old_events;
+  ProtobufC_RPC_Events events;
+} ProtobufC_RPC_FDNotifyChange;
 
-void  protobuf_c_dispatch_dispatch (ProtobufCDispatch *dispatch,
+void  protobuf_c_rpc_dispatch_dispatch (ProtobufCRPCDispatch *dispatch,
                                     size_t              n_notifies,
-                                    ProtobufC_FDNotify *notifies);
-void  protobuf_c_dispatch_clear_changes (ProtobufCDispatch *);
+                                    ProtobufC_RPC_FDNotify *notifies);
+void  protobuf_c_rpc_dispatch_clear_changes (ProtobufCRPCDispatch *);
 
 
-struct _ProtobufCDispatch
+struct _ProtobufCRPCDispatch
 {
   /* changes to the events you are interested in. */
   /* (this handles closed file-descriptors 
      in a manner agreeable to epoll(2) and kqueue(2)) */
   size_t n_changes;
-  ProtobufC_FDNotifyChange *changes;
+  ProtobufC_RPC_FDNotifyChange *changes;
 
   /* the complete set of events you are interested in. */
   size_t n_notifies_desired;
-  ProtobufC_FDNotify *notifies_desired;
+  ProtobufC_RPC_FDNotify *notifies_desired;
 
   /* number of milliseconds to wait if no events occur */
   protobuf_c_boolean has_timeout;
@@ -151,6 +151,6 @@ struct _ProtobufCDispatch
   /* private data follows (see RealDispatch structure in .c file) */
 };
 
-void protobuf_c_dispatch_destroy_default (void);
+void protobuf_c_rpc_dispatch_destroy_default (void);
 
 #endif
