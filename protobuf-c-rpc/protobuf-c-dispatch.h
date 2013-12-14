@@ -33,7 +33,7 @@ typedef struct _ProtobufCDispatch ProtobufCDispatch;
 typedef struct _ProtobufCDispatchTimer ProtobufCDispatchTimer;
 typedef struct _ProtobufCDispatchIdle ProtobufCDispatchIdle;
 
-#include "protobuf-c.h"
+#include <protobuf-c/protobuf-c.h>
 
 typedef enum
 {
