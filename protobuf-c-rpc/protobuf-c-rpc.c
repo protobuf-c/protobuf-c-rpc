@@ -18,7 +18,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include "protobuf-c-rpc.h"
-#include "protobuf-c-data-buffer.h"
+#include "protobuf-c-rpc-data-buffer.h"
 #include "gsklistmacros.h"
 
 #define protobuf_c_assert(x) assert(x)

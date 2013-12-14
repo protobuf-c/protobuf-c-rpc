@@ -26,8 +26,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __PROTOBUF_C_DATA_BUFFER_H_
-#define __PROTOBUF_C_DATA_BUFFER_H_
+#ifndef __PROTOBUF_C_RPC_DATA_BUFFER_H_
+#define __PROTOBUF_C_RPC_DATA_BUFFER_H_
 
 #include <protobuf-c/protobuf-c.h>
 #include <stdarg.h>

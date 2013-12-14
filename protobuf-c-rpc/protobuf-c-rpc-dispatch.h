@@ -26,8 +26,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __PROTOBUF_C_DISPATCH_H_
-#define __PROTOBUF_C_DISPATCH_H_
+#ifndef __PROTOBUF_C_RPC_DISPATCH_H_
+#define __PROTOBUF_C_RPC_DISPATCH_H_
 
 typedef struct _ProtobufCDispatch ProtobufCDispatch;
 typedef struct _ProtobufCDispatchTimer ProtobufCDispatchTimer;

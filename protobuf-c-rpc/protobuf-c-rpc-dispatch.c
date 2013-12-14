@@ -61,7 +61,7 @@
 #include <limits.h>
 #include <errno.h>
 #include <signal.h>
-#include "protobuf-c-dispatch.h"
+#include "protobuf-c-rpc-dispatch.h"
 #include "gskrbtreemacros.h"
 #include "gsklistmacros.h"
 

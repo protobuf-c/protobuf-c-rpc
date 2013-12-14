@@ -12,7 +12,7 @@
  *         message_length            32-bit little-endian
  *         request_id                32-bit any-endian
  */
-#include "protobuf-c-dispatch.h"
+#include "protobuf-c-rpc-dispatch.h"
 
 typedef enum
 {

@@ -36,7 +36,7 @@
 # include <malloc.h>
 #endif
 #include <stdlib.h>
-#include "protobuf-c-data-buffer.h"
+#include "protobuf-c-rpc-data-buffer.h"
 
 #undef TRUE
 #define TRUE 1
