@@ -5,8 +5,8 @@ before_install:
 
 install:
     - sudo apt-get -q install protobuf-compiler libprotobuf-dev libprotoc-dev
+    - sh -c 'git clone https://github.com/protobuf-c/protobuf-c.git && cd protobuf-c && ./autogen.sh && ./configure && make && sudo make install'
 
 script:
     - ./autogen.sh
     - ./configure && make distcheck && make clean
-    - ./configure --enable-rpc && make distcheck DISTCHECK_CONFIGURE_FLAGS="--enable-rpc" && make clean
