@@ -5,7 +5,7 @@ before_install:
 
 install:
     - sudo apt-get -q install protobuf-compiler libprotobuf-dev libprotoc-dev
-    - sh -c 'git clone https://github.com/protobuf-c/protobuf-c.git && cd protobuf-c && ./autogen.sh && ./configure && make && sudo make install'
+    - sh -c 'git clone https://github.com/protobuf-c/protobuf-c.git && cd protobuf-c && ./autogen.sh && ./configure --prefix=/usr && make && sudo make install'
 
 script:
     - ./autogen.sh
