@@ -36,6 +36,8 @@
 
 #define MAX_FAILED_MSG_LENGTH   512
 
+#define MAX_ALLOCA		8192
+
 typedef enum
 {
   PROTOBUF_C_RPC_CLIENT_STATE_INIT,
@@ -484,7 +486,7 @@ enqueue_request (ProtobufC_RPC_Client *client,
 
   /* Pack message */
   packed_size = protobuf_c_message_get_packed_size (input);
-  if (packed_size < client->allocator->max_alloca)
+  if (packed_size < MAX_ALLOCA)
     packed_data = alloca (packed_size);
   else
     packed_data = client->allocator->alloc (client->allocator, packed_size);
@@ -499,7 +501,7 @@ enqueue_request (ProtobufC_RPC_Client *client,
   protobuf_c_rpc_data_buffer_append (&client->outgoing, packed_data, packed_size);
 
   /* Clean up if not using alloca() */
-  if (packed_size >= client->allocator->max_alloca)
+  if (packed_size >= MAX_ALLOCA)
     client->allocator->free (client->allocator, packed_data);
 
   /* Add closure to request-tree */
