@@ -1,3 +1,13 @@
 protobuf-c-rpc (0.1) UNRELEASED
 
  * This is protobuf-c-rpc, which has been split out from protobuf-c.
+
+ * Add protobuf_c_rpc_server_configure_threading().
+
+ * rpc: Rename AF_LOCAL to AF_UNIX (Issue #86, #100).
+
+ * rpc: Handle server responses with NULL messages on the client side
+   (Issue #78).
+
+ * rpc: Free the timer created by autoreconnect in case the client has
+   failed to connect (Issue #70).
