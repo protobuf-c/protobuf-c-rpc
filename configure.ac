@@ -1,6 +1,9 @@
 AC_PREREQ(2.60)
 AC_INIT([protobuf-c-rpc], [0.1])
-AC_CONFIG_SRCDIR([protobuf-c-rpc/protobuf-c-rpc.c])
+AC_CONFIG_SRCDIR([protobuf-c-rpc/protobuf-c-rpc-client.c])
+AC_CONFIG_SRCDIR([protobuf-c-rpc/protobuf-c-rpc-server.c])
+AC_CONFIG_SRCDIR([protobuf-c-rpc/protobuf-c-rpc-data-buffer.c])
+AC_CONFIG_SRCDIR([protobuf-c-rpc/protobuf-c-rpc-dispatch.c])
 AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([foreign 1.11 -Wall -Wno-portability silent-rules subdir-objects])
 AC_PROG_CC_STDC

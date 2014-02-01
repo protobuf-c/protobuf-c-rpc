@@ -41,7 +41,8 @@ protobuf_c_rpc_libprotobuf_c_rpc_la_SOURCES = \
 	protobuf-c-rpc/gskrbtreemacros.h \
 	protobuf-c-rpc/protobuf-c-rpc-data-buffer.c \
 	protobuf-c-rpc/protobuf-c-rpc-dispatch.c \
-	protobuf-c-rpc/protobuf-c-rpc.c
+	protobuf-c-rpc/protobuf-c-rpc-client.c \
+	protobuf-c-rpc/protobuf-c-rpc-server.c
 
 protobuf_c_rpc_libprotobuf_c_rpc_la_LDFLAGS = $(AM_LDFLAGS) \
 	-version-info $(LIBPROTOBUF_C_RPC_CURRENT):$(LIBPROTOBUF_C_RPC_REVISION):$(LIBPROTOBUF_C_RPC_AGE) \
