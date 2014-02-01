@@ -15,3 +15,9 @@ protobuf-c-rpc (0.1) UNRELEASED
  * Bugs in dsk-dispatch (Issue #65 for one thing; POLLHUP for another; and
    a problem where we moved fd_map into a local variable, when in fact in
    can be reallocated all over the place, in dsk_dispatch_dispatch()).
+
+ * Split the RPC code into client and server parts for clarity.
+
+ * Implement custom RPC protocol API. Use protobuf_c_rpc_client_set_rpc_protocol
+   and protobuf_c_rpc_server_set_rpc_protocol to set the custom (de)serializers.
+   The default RPC protocol remains the same as before.
