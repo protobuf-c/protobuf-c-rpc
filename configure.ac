@@ -25,6 +25,9 @@ AC_CHECK_HEADERS(sys/uio.h)
 AC_CHECK_HEADERS(unistd.h)
 AC_CHECK_HEADERS(winsock.h)
 
+# Check libsocket on solaris
+AC_SEARCH_LIBS([connect], [socket], [], [AC_MSG_FAILURE([connect was not found on your system])], [-lnsl])
+
 PKG_PROG_PKG_CONFIG
 if test -n "$PKG_CONFIG"; then
     # Horrible hack for systems where the pkg-config install directory is simply wrong!
