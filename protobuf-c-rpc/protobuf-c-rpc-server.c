@@ -402,6 +402,27 @@ handle_server_connection_events (int fd,
   ServerConnection *conn = data;
   ProtobufCService *service = conn->server->underlying;
   ProtobufCAllocator *allocator = conn->server->allocator;
+
+  if ((events & PROTOBUF_C_RPC_EVENT_WRITABLE) != 0
+    && conn->outgoing.size > 0)
+    {
+      int write_rv = protobuf_c_rpc_data_buffer_writev (&conn->outgoing, fd);
+      if (write_rv < 0)
+        {
+          if (!errno_is_ignorable (errno))
+            {
+              server_connection_failed (conn,
+                                        PROTOBUF_C_RPC_ERROR_CODE_CLIENT_TERMINATED,
+                                        "writing to file-descriptor: %s",
+                                        strerror (errno));
+              return;
+            }
+        }
+      if (conn->outgoing.size == 0)
+        protobuf_c_rpc_dispatch_watch_fd (conn->server->dispatch, conn->fd, PROTOBUF_C_RPC_EVENT_READABLE,
+                                      handle_server_connection_events, conn);
+    }
+
   if (events & PROTOBUF_C_RPC_EVENT_READABLE)
     {
       int read_rv = protobuf_c_rpc_data_buffer_read_in_fd (&conn->incoming, fd);
@@ -459,25 +480,6 @@ handle_server_connection_events (int fd,
             if (payload.message)
               protobuf_c_message_free_unpacked (payload.message, allocator);
           }
-    }
-  if ((events & PROTOBUF_C_RPC_EVENT_WRITABLE) != 0
-    && conn->outgoing.size > 0)
-    {
-      int write_rv = protobuf_c_rpc_data_buffer_writev (&conn->outgoing, fd);
-      if (write_rv < 0)
-        {
-          if (!errno_is_ignorable (errno))
-            {
-              server_connection_failed (conn,
-                                        PROTOBUF_C_RPC_ERROR_CODE_CLIENT_TERMINATED,
-                                        "writing to file-descriptor: %s",
-                                        strerror (errno));
-              return;
-            }
-        }
-      if (conn->outgoing.size == 0)
-        protobuf_c_rpc_dispatch_watch_fd (conn->server->dispatch, conn->fd, PROTOBUF_C_RPC_EVENT_READABLE,
-                                      handle_server_connection_events, conn);
     }
 }
 
