@@ -37,13 +37,12 @@
 #include <assert.h>
 #if HAVE_ALLOCA_H
 # include <alloca.h>
-#elif HAVE_MALLOC_H
-# include <malloc.h>
 #endif
 #include <sys/time.h>
 #include <unistd.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #if HAVE_SYS_POLL_H
 # include <sys/poll.h>
 # define USE_POLL              1
@@ -285,12 +284,33 @@ protobuf_c_rpc_dispatch_peek_allocator (ProtobufCRPCDispatch *dispatch)
   return d->allocator;
 }
 
+/* --- allocator --- */
+
+static void *
+system_alloc(void *allocator_data, size_t size)
+{
+   return malloc(size);
+}
+
+static void
+system_free(void *allocator_data, void *data)
+{
+   free(data);
+}
+
+static ProtobufCAllocator protobuf_c_rpc__allocator = {
+   .alloc = &system_alloc,
+   .free = &system_free,
+   .allocator_data = NULL,
+};
+
 /* TODO: perhaps thread-private dispatches make more sense? */
 static ProtobufCRPCDispatch *def = NULL;
+
 ProtobufCRPCDispatch  *protobuf_c_rpc_dispatch_default (void)
 {
   if (def == NULL)
-    def = protobuf_c_rpc_dispatch_new (&protobuf_c_default_allocator);
+    def = protobuf_c_rpc_dispatch_new (&protobuf_c_rpc__allocator);
   return def;
 }
 

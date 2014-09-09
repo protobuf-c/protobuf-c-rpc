@@ -32,8 +32,6 @@
 #include <errno.h>
 #if HAVE_ALLOCA_H
 # include <alloca.h>
-#elif HAVE_MALLOC_H
-# include <malloc.h>
 #endif
 #include <stdlib.h>
 #include "protobuf-c-rpc.h"
