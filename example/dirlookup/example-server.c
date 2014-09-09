@@ -5,8 +5,8 @@
 #include <errno.h>
 #include <signal.h>
 #include <stdlib.h>
-#include "generated-code/test.pb-c.h"
-#include <google/protobuf-c/protobuf-c-rpc.h>
+#include "dirlookup.pb-c.h"
+#include <protobuf-c-rpc/protobuf-c-rpc.h>
 
 static unsigned database_size;
 static Foo__Person *database;		/* sorted by name */

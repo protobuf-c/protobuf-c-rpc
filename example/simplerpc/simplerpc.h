@@ -1,7 +1,7 @@
 #ifndef __PROTOBUF_SIMPLERPC_H_
 #ifndef __PROTOBUF_SIMPLERPC_H_
 
-#include <google/protobuf-c/protobuf.h>
+#include <protobuf-c/protobuf-c.h>
 
 SimplerpcContext *simplerpc_context_new (void);
 void              simplerpc_context_add_service

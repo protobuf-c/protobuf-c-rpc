@@ -1,5 +1,5 @@
 #include <gsk/gsk.h>
-#include "generated/simplerpc.pb-c.h"
+#include "simplerpc.pb-c.h"
 
 /* === server === */
 

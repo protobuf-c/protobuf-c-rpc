@@ -1,4 +1,4 @@
-#include "../google/protobuf-c/protobuf-c.h"
+#include "protobuf-c/protobuf-c.h"
 
 typedef struct _ProtobufC_SCTP_Dispatch ProtobufC_SCTP_Dispatch;
 typedef struct _ProtobufC_SCTP_Channel ProtobufC_SCTP_Channel;

@@ -1,4 +1,4 @@
-#include "generated/example.pb-c.h"
+#include "example.pb-c.h"
 
 extern Example__WordFuncs_Service example__word_funcs__service__global;
 

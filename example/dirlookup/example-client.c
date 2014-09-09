@@ -5,8 +5,8 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <signal.h>
-#include "generated-code/test.pb-c.h"
-#include <google/protobuf-c/protobuf-c-rpc.h>
+#include "dirlookup.pb-c.h"
+#include <protobuf-c-rpc/protobuf-c-rpc.h>
 
 static void
 die (const char *format, ...)
