@@ -57,6 +57,8 @@ EXTRA_DIST += protobuf-c-rpc/libprotobuf-c-rpc.pc.in
 # protobuf-c-rpc tests
 #
 
+LOG_COMPILER = $(VALGRIND)
+
 check_PROGRAMS += \
 	t/test-rpc
 
