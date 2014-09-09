@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/protobuf-c/protobuf-c-rpc.png?branch=master)](https://travis-ci.org/protobuf-c/protobuf-c-rpc)
+[![Build Status](https://travis-ci.org/protobuf-c/protobuf-c-rpc.svg?branch=master)](https://travis-ci.org/protobuf-c/protobuf-c-rpc) [![Coverage Status](https://img.shields.io/coveralls/protobuf-c/protobuf-c-rpc.svg)](https://coveralls.io/r/protobuf-c/protobuf-c-rpc)
 
 ## Overview
 
