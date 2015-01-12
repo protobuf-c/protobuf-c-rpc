@@ -37,10 +37,8 @@ LIBPROTOBUF_C_RPC_AGE=0
 lib_LTLIBRARIES += \
 	protobuf-c-rpc/libprotobuf-c-rpc.la
 
-noinst_HEADERS = \
-	protobuf-c-rpc/protobuf-c-rpc-data-buffer.h
-
 nobase_include_HEADERS += \
+	protobuf-c-rpc/protobuf-c-rpc-data-buffer.h \
 	protobuf-c-rpc/protobuf-c-rpc-dispatch.h \
 	protobuf-c-rpc/protobuf-c-rpc.h
 
