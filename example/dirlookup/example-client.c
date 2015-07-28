@@ -101,17 +101,17 @@ handle_query_response (const Foo__LookupResult *result,
 }
 
 /* Run the main-loop without blocking.  It would be nice
-   if there was a simple API for this (protobuf_c_dispatch_run_with_timeout?),
+   if there was a simple API for this (protobuf_c_rpc_dispatch_run_with_timeout?),
    but there isn't for now. */
 static void
-do_nothing (ProtobufCDispatch *dispatch, void *unused)
+do_nothing (ProtobufCRPCDispatch *dispatch, void *unused)
 {
 }
 static void
-run_main_loop_without_blocking (ProtobufCDispatch *dispatch)
+run_main_loop_without_blocking (ProtobufCRPCDispatch *dispatch)
 {
-  protobuf_c_dispatch_add_idle (dispatch, do_nothing, NULL);
-  protobuf_c_dispatch_run (dispatch);
+  protobuf_c_rpc_dispatch_add_idle (dispatch, do_nothing, NULL);
+  protobuf_c_rpc_dispatch_run (dispatch);
 }
 
 int main(int argc, char**argv)
@@ -158,7 +158,7 @@ int main(int argc, char**argv)
 
   fprintf (stderr, "Connecting... ");
   while (!protobuf_c_rpc_client_is_connected (client))
-    protobuf_c_dispatch_run (protobuf_c_dispatch_default ());
+    protobuf_c_rpc_dispatch_run (protobuf_c_rpc_dispatch_default ());
   fprintf (stderr, "done.\n");
 
   for (;;)
@@ -173,7 +173,7 @@ int main(int argc, char**argv)
       /* In order to prevent having the client get unduly stuck
          in an error state, exercise the main-loop, which will
          give the connection process time to run. */
-      run_main_loop_without_blocking (protobuf_c_dispatch_default ());
+      run_main_loop_without_blocking (protobuf_c_rpc_dispatch_default ());
 
       if (is_whitespace (buf))
         continue;
@@ -181,7 +181,7 @@ int main(int argc, char**argv)
       query.name = buf;
       foo__dir_lookup__by_name (service, &query, handle_query_response, &is_done);
       while (!is_done)
-        protobuf_c_dispatch_run (protobuf_c_dispatch_default ());
+        protobuf_c_rpc_dispatch_run (protobuf_c_rpc_dispatch_default ());
     }
   return 0;
 }
