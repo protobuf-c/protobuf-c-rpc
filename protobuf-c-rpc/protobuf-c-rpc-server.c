@@ -316,7 +316,7 @@ server_connection_response_closure (const ProtobufCMessage *message,
                                     request->request_id,
                                     (ProtobufCMessage *)message };
   ProtobufC_RPC_Protocol_Status status =
-    server->rpc_protocol.serialize_func (&buffer_simple.base, payload);
+    server->rpc_protocol.serialize_func (allocator, &buffer_simple.base, payload);
 
   if (status != PROTOBUF_C_RPC_PROTOCOL_STATUS_SUCCESS)
     {
@@ -495,7 +495,8 @@ handle_server_connection_events (int fd,
  *         request_id                32-bit any-endian
  */
 static ProtobufC_RPC_Protocol_Status
-server_serialize (ProtobufCBuffer *out_buffer,
+server_serialize (ProtobufCAllocator *allocator,
+                  ProtobufCBuffer *out_buffer,
                   ProtobufC_RPC_Payload payload)
 {
    if (!out_buffer)

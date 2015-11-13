@@ -98,7 +98,8 @@ typedef const ProtobufCMessageDescriptor* (*ProtobufC_RPC_Get_Descriptor)
 typedef struct
 {
 /* Serializes the payload into the provided append-only buffer */
-ProtobufC_RPC_Protocol_Status (*serialize_func) (ProtobufCBuffer *out_buffer,
+ProtobufC_RPC_Protocol_Status (*serialize_func) (ProtobufCAllocator *allocator,
+                                                ProtobufCBuffer *out_buffer,
                                                 ProtobufC_RPC_Payload payload);
 /* Deserializes the incoming RPC data buffer into a provided payload structure.
  * The unpacked message will be freed by the protobuf-c-rpc library. */

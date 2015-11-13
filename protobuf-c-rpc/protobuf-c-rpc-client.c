@@ -468,7 +468,8 @@ enqueue_request (ProtobufC_RPC_Client *client,
                                    request_id,
                                    (ProtobufCMessage *)input};
 
-  client->rpc_protocol.serialize_func (&client->outgoing.base, payload);
+  client->rpc_protocol.serialize_func (client->allocator,
+        &client->outgoing.base, payload);
 
   /* Add closure to request-tree */
   Closure *cl = client->info.connected.closures + (request_id - 1);
@@ -592,7 +593,8 @@ handle_client_fd_events (int                fd,
  *         message_length            32-bit little-endian
  *         request_id                32-bit any-endian
  */
-static ProtobufC_RPC_Protocol_Status client_serialize (ProtobufCBuffer *out_buffer,
+static ProtobufC_RPC_Protocol_Status client_serialize (ProtobufCAllocator *allocator,
+                                                      ProtobufCBuffer *out_buffer,
                                                       ProtobufC_RPC_Payload payload)
 {
    if (!out_buffer)
