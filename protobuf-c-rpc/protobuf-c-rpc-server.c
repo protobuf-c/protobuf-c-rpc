@@ -316,7 +316,8 @@ server_connection_response_closure (const ProtobufCMessage *message,
                                     request->request_id,
                                     (ProtobufCMessage *)message };
   ProtobufC_RPC_Protocol_Status status =
-    server->rpc_protocol.serialize_func (allocator, &buffer_simple.base, payload);
+    server->rpc_protocol.serialize_func (server->underlying->descriptor,
+          allocator, &buffer_simple.base, payload);
 
   if (status != PROTOBUF_C_RPC_PROTOCOL_STATUS_SUCCESS)
     {
@@ -453,7 +454,8 @@ handle_server_connection_events (int fd,
             /* Deserialize the buffer */
             ProtobufC_RPC_Payload payload = {0};
             ProtobufC_RPC_Protocol_Status status =
-              conn->server->rpc_protocol.deserialize_func (allocator,
+              conn->server->rpc_protocol.deserialize_func (service->descriptor,
+                                                           allocator,
                                                            &conn->incoming,
                                                            &payload,
                                                            get_rcvd_message_descriptor,
@@ -495,7 +497,8 @@ handle_server_connection_events (int fd,
  *         request_id                32-bit any-endian
  */
 static ProtobufC_RPC_Protocol_Status
-server_serialize (ProtobufCAllocator *allocator,
+server_serialize (const ProtobufCServiceDescriptor *descriptor,
+                  ProtobufCAllocator *allocator,
                   ProtobufCBuffer *out_buffer,
                   ProtobufC_RPC_Payload payload)
 {
@@ -530,7 +533,8 @@ server_serialize (ProtobufCAllocator *allocator,
 }
 
 static ProtobufC_RPC_Protocol_Status
-server_deserialize (ProtobufCAllocator    *allocator,
+server_deserialize (const ProtobufCServiceDescriptor *descriptor,
+                    ProtobufCAllocator    *allocator,
                     ProtobufCRPCDataBuffer *in_buffer,
                     ProtobufC_RPC_Payload *payload,
                     ProtobufC_RPC_Get_Descriptor get_descriptor,

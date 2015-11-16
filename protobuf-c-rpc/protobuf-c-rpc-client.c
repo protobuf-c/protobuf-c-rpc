@@ -468,7 +468,7 @@ enqueue_request (ProtobufC_RPC_Client *client,
                                    request_id,
                                    (ProtobufCMessage *)input};
 
-  client->rpc_protocol.serialize_func (client->allocator,
+  client->rpc_protocol.serialize_func (desc, client->allocator,
         &client->outgoing.base, payload);
 
   /* Add closure to request-tree */
@@ -551,7 +551,8 @@ handle_client_fd_events (int                fd,
               /* Deserialize the buffer */
               ProtobufC_RPC_Payload payload = {0};
               ProtobufC_RPC_Protocol_Status status =
-                client->rpc_protocol.deserialize_func (client->allocator,
+                client->rpc_protocol.deserialize_func (client->base_service.descriptor,
+                                                       client->allocator,
                                                        &client->incoming,
                                                        &payload,
                                                        get_rcvd_message_descriptor,
@@ -593,7 +594,8 @@ handle_client_fd_events (int                fd,
  *         message_length            32-bit little-endian
  *         request_id                32-bit any-endian
  */
-static ProtobufC_RPC_Protocol_Status client_serialize (ProtobufCAllocator *allocator,
+static ProtobufC_RPC_Protocol_Status client_serialize (const ProtobufCServiceDescriptor *descriptor,
+                                                      ProtobufCAllocator *allocator,
                                                       ProtobufCBuffer *out_buffer,
                                                       ProtobufC_RPC_Payload payload)
 {
@@ -618,7 +620,8 @@ static ProtobufC_RPC_Protocol_Status client_serialize (ProtobufCAllocator *alloc
    return PROTOBUF_C_RPC_PROTOCOL_STATUS_SUCCESS;
 }
 
-static ProtobufC_RPC_Protocol_Status client_deserialize (ProtobufCAllocator    *allocator,
+static ProtobufC_RPC_Protocol_Status client_deserialize (const ProtobufCServiceDescriptor *descriptor,
+                                                        ProtobufCAllocator    *allocator,
                                                         ProtobufCRPCDataBuffer       *in_buffer,
                                                         ProtobufC_RPC_Payload *payload,
                                                         ProtobufC_RPC_Get_Descriptor get_descriptor,
