@@ -827,7 +827,6 @@ ProtobufCService *protobuf_c_rpc_client_new (ProtobufC_RPC_AddressType type,
   rv->allocator = allocator;
   rv->dispatch = dispatch;
   rv->address_type = type;
-  rv->name = strcpy (allocator->alloc (allocator, strlen (name) + 1), name);
   rv->state = PROTOBUF_C_RPC_CLIENT_STATE_INIT;
   rv->fd = -1;
   rv->autoreconnect = 1;
@@ -838,6 +837,14 @@ ProtobufCService *protobuf_c_rpc_client_new (ProtobufC_RPC_AddressType type,
   rv->info.init.idle = protobuf_c_rpc_dispatch_add_idle (dispatch, handle_init_idle, rv);
   ProtobufC_RPC_Protocol default_rpc_protocol = {client_serialize, client_deserialize};
   rv->rpc_protocol = default_rpc_protocol;
+
+  size_t name_len = strlen (name);
+  rv->name = allocator->alloc (allocator, name_len + 1);
+  if (!rv->name)
+     return NULL;
+  strncpy (rv->name, name, name_len);
+  rv->name[name_len] = '\0';
+
   return &rv->base_service;
 }
 

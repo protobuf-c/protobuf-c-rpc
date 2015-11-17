@@ -629,7 +629,6 @@ server_new_from_fd (ProtobufC_RPC_FD              listening_fd,
   server->first_connection = server->last_connection = NULL;
   server->max_pending_requests_per_connection = 32;
   server->address_type = address_type;
-  server->bind_name = allocator->alloc (allocator, strlen (bind_name) + 1);
   server->error_handler = error_handler;
   server->error_handler_data = "protobuf-c rpc server";
   server->listening_fd = listening_fd;
@@ -640,7 +639,14 @@ server_new_from_fd (ProtobufC_RPC_FD              listening_fd,
   server->proxy_extra_data_len = 0;
   ProtobufC_RPC_Protocol default_rpc_protocol = {server_serialize, server_deserialize};
   server->rpc_protocol = default_rpc_protocol;
-  strcpy (server->bind_name, bind_name);
+
+  size_t name_len = strlen (bind_name);
+  server->bind_name = allocator->alloc (allocator, name_len + 1);
+  if (!server->bind_name)
+     return NULL;
+  strncpy (server->bind_name, bind_name, name_len);
+  server->bind_name[name_len] = '\0';
+
   set_fd_nonblocking (listening_fd);
   protobuf_c_rpc_dispatch_watch_fd (dispatch, listening_fd, PROTOBUF_C_RPC_EVENT_READABLE,
                                 handle_server_listener_readable, server);
