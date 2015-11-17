@@ -415,7 +415,6 @@ protobuf_c_rpc_data_buffer_read_line(ProtobufCRPCDataBuffer *buffer)
   int len = 0;
   char *rv;
   ProtobufCRPCDataBufferFragment *at;
-  int newline_length;
   CHECK_INTEGRITY (buffer);
   for (at = buffer->first_frag; at; at = at->next)
     {
@@ -434,11 +433,7 @@ protobuf_c_rpc_data_buffer_read_line(ProtobufCRPCDataBuffer *buffer)
   rv = buffer->allocator->alloc (buffer->allocator, len + 1);
   /* If we found a newline, read it out, truncating
    * it with NUL before we return from the function... */
-  if (at)
-    newline_length = 1;
-  else
-    newline_length = 0;
-  protobuf_c_rpc_data_buffer_read (buffer, rv, len + newline_length);
+  protobuf_c_rpc_data_buffer_read (buffer, rv, len + 1);
   rv[len] = 0;
   CHECK_INTEGRITY (buffer);
   return rv;
@@ -486,7 +481,7 @@ protobuf_c_rpc_data_buffer_peek_char(const ProtobufCRPCDataBuffer *buffer)
     return -1;
 
   for (frag = buffer->first_frag; frag; frag = frag->next)
-    if (frag->buf_length > 0)
+    if (frag && frag->buf_length > 0)
       break;
   return * protobuf_c_rpc_data_buffer_fragment_start ((ProtobufCRPCDataBufferFragment*)frag);
 }

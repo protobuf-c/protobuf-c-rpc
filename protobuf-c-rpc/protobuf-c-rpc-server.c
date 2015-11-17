@@ -191,11 +191,11 @@ address_to_name (const struct sockaddr *addr,
     {
       /* convert to dotted address + port */
       const struct sockaddr_in *addr_in = (const struct sockaddr_in *) addr;
-      const uint8_t *addr = (const uint8_t *) &(addr_in->sin_addr);
+      const uint8_t *addr2 = (const uint8_t *) &(addr_in->sin_addr);
       uint16_t port = htons (addr_in->sin_port);
       snprintf (name_out, name_out_buf_length,
                 "%u.%u.%u.%u:%u",
-                addr[0], addr[1], addr[2], addr[3], port);
+                addr2[0], addr2[1], addr2[2], addr2[3], port);
       return TRUE;
     }
   return FALSE;
