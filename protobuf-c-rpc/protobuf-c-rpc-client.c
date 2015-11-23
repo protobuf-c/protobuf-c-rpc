@@ -169,7 +169,8 @@ client_failed (ProtobufC_RPC_Client *client,
   buf[sizeof(buf)-1] = 0;
   msg_len = strlen (buf);
   msg = client->allocator->alloc (client->allocator, msg_len + 1);
-  strcpy (msg, buf);
+  strncpy (msg, buf, msg_len);
+  msg[msg_len] = '\0';
 
   /* go to one of the failed states */
   if (client->autoreconnect)

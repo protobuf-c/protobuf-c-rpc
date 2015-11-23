@@ -483,7 +483,11 @@ protobuf_c_rpc_data_buffer_peek_char(const ProtobufCRPCDataBuffer *buffer)
   for (frag = buffer->first_frag; frag; frag = frag->next)
     if (frag && frag->buf_length > 0)
       break;
-  return * protobuf_c_rpc_data_buffer_fragment_start ((ProtobufCRPCDataBufferFragment*)frag);
+
+  if (!frag)
+     return -1;
+  else
+     return * protobuf_c_rpc_data_buffer_fragment_start ((ProtobufCRPCDataBufferFragment*)frag);
 }
 
 /**
