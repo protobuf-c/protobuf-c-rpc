@@ -1,16 +1,31 @@
 #include <string.h>
+#ifndef _WIN32_WCE
 #include <fcntl.h>
+#include <sys/stat.h>
+#endif
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#ifdef WIN32
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#include <WinSock2.h>
+#include <Ws2tcpip.h>
+#include "protobuf-c-rpc-win.h"
+#else
 #include <unistd.h>
 #include <netinet/in.h>
-#include <sys/stat.h>
 #include <sys/un.h>
+#endif
 
 #include "protobuf-c-rpc.h"
 #include "protobuf-c-rpc-data-buffer.h"
 #include "gsklistmacros.h"
+
+#ifdef WIN32
+// Visual C++ knows about inline and __inline, but Visual C only knows about __inline.
+#define inline __inline
+#endif
 
 #undef TRUE
 #define TRUE 1
@@ -79,11 +94,13 @@ struct _ProtobufC_RPC_Server
   ServerRequest *recycled_requests;
 
   /* multithreading support */
+#ifndef WIN32
   ProtobufC_RPC_IsRpcThreadFunc is_rpc_thread_func;
   void * is_rpc_thread_data;
   int proxy_pipe[2];
   unsigned proxy_extra_data_len;
   uint8_t proxy_extra_data[sizeof (void*)];
+#endif
 
   ProtobufC_RPC_Error_Func error_handler;
   void *error_handler_data;
@@ -107,10 +124,14 @@ errno_is_ignorable (int e)
 static void
 set_fd_nonblocking(int fd)
 {
+#ifndef WIN32 /*LINUX*/
   int flags = fcntl (fd, F_GETFL);
-
   if (flags >= 0)
     fcntl (fd, F_SETFL, flags | O_NONBLOCK);
+#else
+  unsigned long flags = 1UL;
+  ioctlsocket(fd, FIONBIO, &flags);
+#endif
 }
 
 static void
@@ -139,7 +160,12 @@ server_connection_close (ServerConnection *conn)
   protobuf_c_rpc_data_buffer_clear (&conn->outgoing);
 
   /* remove this connection from the server's list */
+#ifndef _MSC_VER
   GSK_LIST_REMOVE (GET_CONNECTION_LIST (conn->server), conn);
+#else
+  // MSVC 2008 (and possibly later versions) does not expand macros within macros as required by this code, so we'll do it by hand:
+  GSK_LIST_REMOVE_(ServerConnection *, conn->server->first_connection, conn->server->last_connection, prev, next, conn);
+#endif
 
   /* disassocate all the requests from the connection */
   while (conn->first_pending_request != NULL)
@@ -259,7 +285,12 @@ create_server_request (ServerConnection *conn,
   rv->request_id = request_id;
   rv->method_index = method_index;
   conn->n_pending_requests++;
+#ifndef _MSC_VER
   GSK_LIST_APPEND (GET_PENDING_REQUEST_LIST (conn), rv);
+#else
+  // MSVC 2008 (and possibly later versions) does not expand macros within macros as required by this code, so we'll do it by hand:
+  GSK_LIST_APPEND_ (ServerRequest *, conn->first_pending_request, conn->last_pending_request, info.alive.prev, info.alive.next, rv);
+#endif
   return rv;
 }
 
@@ -290,7 +321,7 @@ uint32_to_le (uint32_t le)
 }
 #define uint32_from_le uint32_to_le             /* make the code more readable, i guess */
 
-static void handle_server_connection_events (int fd,
+static void handle_server_connection_events (ProtobufC_RPC_FD fd,
                                              unsigned events,
                                              void *data);
 static void
@@ -301,15 +332,18 @@ server_connection_response_closure (const ProtobufCMessage *message,
   ProtobufC_RPC_Server *server = request->server;
   protobuf_c_boolean must_proxy = 0;
   ProtobufCAllocator *allocator = server->allocator;
+  uint8_t buffer_slab[512];
+
+#ifndef WIN32
   if (server->is_rpc_thread_func != NULL)
     {
       must_proxy = !server->is_rpc_thread_func (server,
                                                 server->dispatch,
                                                 server->is_rpc_thread_data);
     }
+#endif
 
-
-  uint8_t buffer_slab[512];
+  {
   ProtobufCBufferSimple buffer_simple = PROTOBUF_C_BUFFER_SIMPLE_INIT (buffer_slab);
 
   ProtobufC_RPC_Payload payload = { request->method_index,
@@ -326,6 +360,7 @@ server_connection_response_closure (const ProtobufCMessage *message,
       return;
     }
 
+#ifndef WIN32
   if (must_proxy)
     {
       ProxyResponse *pr = allocator->alloc (allocator, sizeof (ProxyResponse) + buffer_simple.len);
@@ -352,7 +387,9 @@ retry_write:
           allocator->free (allocator, pr);
         }
     }
-  else if (request->conn == NULL)
+  else
+#endif
+  if (request->conn == NULL)
     {
       /* defunct request */
       allocator->free (allocator, request);
@@ -369,12 +406,19 @@ retry_write:
                                       PROTOBUF_C_RPC_EVENT_READABLE|PROTOBUF_C_RPC_EVENT_WRITABLE,
                                       handle_server_connection_events,
                                       conn);
+#ifndef _MSC_VER
       GSK_LIST_REMOVE (GET_PENDING_REQUEST_LIST (conn), request);
+#else
+      // MSVC 2008 (and possibly later versions) does not expand macros within macros as required by this code, so we'll do it by hand:
+      GSK_LIST_REMOVE_ (ServerRequest *, conn->first_pending_request, conn->last_pending_request, info.alive.prev, info.alive.next, request);
+#endif
+
       conn->n_pending_requests--;
 
       free_server_request (server, request);
     }
   PROTOBUF_C_BUFFER_SIMPLE_CLEAR (&buffer_simple);
+  }
 }
 
 static const ProtobufCMessageDescriptor *
@@ -396,7 +440,7 @@ get_rcvd_message_descriptor (const ProtobufC_RPC_Payload *payload, void *data)
 }
 
 static void
-handle_server_connection_events (int fd,
+handle_server_connection_events (ProtobufC_RPC_FD fd,
                                  unsigned events,
                                  void *data)
 {
@@ -451,6 +495,8 @@ handle_server_connection_events (int fd,
       else
         while (conn->incoming.size > 0)
           {
+            ServerRequest *server_request;
+
             /* Deserialize the buffer */
             ProtobufC_RPC_Payload payload = {0};
             ProtobufC_RPC_Protocol_Status status =
@@ -472,9 +518,9 @@ handle_server_connection_events (int fd,
             }
 
             /* Invoke service (note that it may call back immediately) */
-            ServerRequest *server_request = create_server_request (conn,
-                                                                   payload.request_id,
-                                                                   payload.method_index);
+            server_request = create_server_request (conn,
+                                                    payload.request_id,
+                                                    payload.method_index);
             service->invoke (service, payload.method_index, payload.message,
                              server_connection_response_closure, server_request);
 
@@ -502,10 +548,11 @@ server_serialize (const ProtobufCServiceDescriptor *descriptor,
                   ProtobufCBuffer *out_buffer,
                   ProtobufC_RPC_Payload payload)
 {
+   uint32_t header[4];
+
    if (!out_buffer)
       return PROTOBUF_C_RPC_PROTOCOL_STATUS_FAILED;
 
-   uint32_t header[4];
    if (!protobuf_c_message_check (payload.message))
    {
       /* send failed response */
@@ -540,16 +587,17 @@ server_deserialize (const ProtobufCServiceDescriptor *descriptor,
                     ProtobufC_RPC_Get_Descriptor get_descriptor,
                     void *get_descriptor_data)
 {
-   if (!allocator || !in_buffer || !payload)
-      return PROTOBUF_C_RPC_PROTOCOL_STATUS_FAILED;
-
    uint32_t header[3];
-   if (in_buffer->size < sizeof (header))
-      return PROTOBUF_C_RPC_PROTOCOL_STATUS_INCOMPLETE_BUFFER;
-
    uint32_t message_length;
    uint8_t *packed_data;
    ProtobufCMessage *message;
+   const ProtobufCMessageDescriptor *desc;
+
+   if (!allocator || !in_buffer || !payload)
+      return PROTOBUF_C_RPC_PROTOCOL_STATUS_FAILED;
+
+   if (in_buffer->size < sizeof (header))
+      return PROTOBUF_C_RPC_PROTOCOL_STATUS_INCOMPLETE_BUFFER;
 
    protobuf_c_rpc_data_buffer_peek (in_buffer, header, sizeof (header));
    payload->method_index = uint32_from_le (header[0]);
@@ -560,8 +608,7 @@ server_deserialize (const ProtobufCServiceDescriptor *descriptor,
    if (in_buffer->size < sizeof (header) + message_length)
       return PROTOBUF_C_RPC_PROTOCOL_STATUS_INCOMPLETE_BUFFER;
 
-   const ProtobufCMessageDescriptor *desc =
-      get_descriptor (payload, get_descriptor_data);
+   desc = get_descriptor (payload, get_descriptor_data);
    if (!desc)
       return PROTOBUF_C_RPC_PROTOCOL_STATUS_FAILED;
 
@@ -583,7 +630,7 @@ server_deserialize (const ProtobufCServiceDescriptor *descriptor,
 
 
 static void
-handle_server_listener_readable (int fd,
+handle_server_listener_readable (ProtobufC_RPC_FD fd,
                                  unsigned events,
                                  void *data)
 {
@@ -608,7 +655,12 @@ handle_server_listener_readable (int fd,
   conn->n_pending_requests = 0;
   conn->first_pending_request = conn->last_pending_request = NULL;
   conn->server = server;
+#ifndef _MSC_VER
   GSK_LIST_APPEND (GET_CONNECTION_LIST (server), conn);
+#else
+  // MSVC 2008 (and possibly later versions) does not expand macros within macros as required by this code, so we'll do it by hand:
+  GSK_LIST_APPEND_ (ServerConnection *, server->first_connection, server->last_connection, prev, next, conn);
+#endif
   protobuf_c_rpc_dispatch_watch_fd (server->dispatch, conn->fd, PROTOBUF_C_RPC_EVENT_READABLE,
                                 handle_server_connection_events, conn);
 }
@@ -633,26 +685,32 @@ server_new_from_fd (ProtobufC_RPC_FD              listening_fd,
   server->error_handler_data = "protobuf-c rpc server";
   server->listening_fd = listening_fd;
   server->recycled_requests = NULL;
+#ifndef WIN32
   server->is_rpc_thread_func = NULL;
   server->is_rpc_thread_data = NULL;
   server->proxy_pipe[0] = server->proxy_pipe[1] = -1;
   server->proxy_extra_data_len = 0;
-  ProtobufC_RPC_Protocol default_rpc_protocol = {server_serialize, server_deserialize};
-  server->rpc_protocol = default_rpc_protocol;
+#endif
+  {
+    size_t name_len;
+    ProtobufC_RPC_Protocol default_rpc_protocol = {server_serialize, server_deserialize};
+    server->rpc_protocol = default_rpc_protocol;
 
-  size_t name_len = strlen (bind_name);
-  server->bind_name = allocator->alloc (allocator, name_len + 1);
-  if (!server->bind_name)
-     return NULL;
-  strncpy (server->bind_name, bind_name, name_len);
-  server->bind_name[name_len] = '\0';
+    name_len = strlen (bind_name);
+    server->bind_name = allocator->alloc (allocator, name_len + 1);
+    if (!server->bind_name)
+       return NULL;
+    strncpy (server->bind_name, bind_name, name_len);
+    server->bind_name[name_len] = '\0';
 
-  set_fd_nonblocking (listening_fd);
-  protobuf_c_rpc_dispatch_watch_fd (dispatch, listening_fd, PROTOBUF_C_RPC_EVENT_READABLE,
+    set_fd_nonblocking (listening_fd);
+    protobuf_c_rpc_dispatch_watch_fd (dispatch, listening_fd, PROTOBUF_C_RPC_EVENT_READABLE,
                                 handle_server_listener_readable, server);
-  return server;
+    return server;
+  }
 }
 
+#ifndef WIN32 /*LINUX*/
 /* this function is for handling the common problem
    that we bind over-and-over again to the same
    unix path.
@@ -707,6 +765,8 @@ _gsk_socket_address_local_maybe_delete_stale_socket (const char *path,
     fprintf (stderr, "unable to delete %s: %s\n",
              path, strerror(errno));
 }
+#endif
+
 ProtobufC_RPC_Server *
 protobuf_c_rpc_server_new       (ProtobufC_RPC_AddressType type,
                                  const char               *name,
@@ -717,10 +777,13 @@ protobuf_c_rpc_server_new       (ProtobufC_RPC_AddressType type,
   int protocol_family;
   struct sockaddr *address;
   socklen_t address_len;
+#ifndef WIN32 /*LINUX*/
   struct sockaddr_un addr_un;
+#endif
   struct sockaddr_in addr_in;
   switch (type)
     {
+#ifndef WIN32 /*LINUX*/
     case PROTOBUF_C_RPC_ADDRESS_LOCAL:
       protocol_family = PF_UNIX;
       memset (&addr_un, 0, sizeof (addr_un));
@@ -732,6 +795,7 @@ protobuf_c_rpc_server_new       (ProtobufC_RPC_AddressType type,
                                                            address,
                                                            address_len);
       break;
+#endif
     case PROTOBUF_C_RPC_ADDRESS_TCP:
       protocol_family = PF_INET;
       memset (&addr_in, 0, sizeof (addr_in));
@@ -777,8 +841,11 @@ protobuf_c_rpc_server_destroy (ProtobufC_RPC_Server *server,
   while (server->first_connection != NULL)
     server_connection_close (server->first_connection);
 
-  if (server->address_type == PROTOBUF_C_RPC_ADDRESS_LOCAL)
+#ifndef WIN32
+  if (server->address_type == PROTOBUF_C_RPC_ADDRESS_LOCAL) /* unix-domain socket */
     unlink (server->bind_name);
+#endif
+
   server->allocator->free (server->allocator, server->bind_name);
 
   while (server->recycled_requests != NULL)
@@ -798,6 +865,7 @@ protobuf_c_rpc_server_destroy (ProtobufC_RPC_Server *server,
   return rv;
 }
 
+#ifndef WIN32
 /* Number of proxied requests to try to grab in a single read */
 #define PROXY_BUF_SIZE   256
 static void
@@ -838,7 +906,12 @@ handle_proxy_pipe_readable (ProtobufC_RPC_FD   fd,
                                           PROTOBUF_C_RPC_EVENT_READABLE|PROTOBUF_C_RPC_EVENT_WRITABLE,
                                           handle_server_connection_events,
                                           conn);
+#ifndef _MSC_VER
           GSK_LIST_REMOVE (GET_PENDING_REQUEST_LIST (conn), request);
+#else
+          // MSVC 2008 (and possibly later versions) does not expand macros within macros as required by this code, so we'll do it by hand:
+          GSK_LIST_REMOVE_(ServerRequest *, conn->first_pending_request, conn->last_pending_request, info.alive.prev, info.alive.next, request);
+#endif
           conn->n_pending_requests--;
 
           free_server_request (conn->server, request);
@@ -873,6 +946,7 @@ retry_pipe:
                                 PROTOBUF_C_RPC_EVENT_READABLE,
                                 handle_proxy_pipe_readable, server);
 }
+#endif
 
 void
 protobuf_c_rpc_server_set_error_handler (ProtobufC_RPC_Server *server,

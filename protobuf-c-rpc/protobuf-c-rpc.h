@@ -36,7 +36,9 @@
 
 typedef enum
 {
+#ifndef WIN32
   PROTOBUF_C_RPC_ADDRESS_LOCAL,  /* unix-domain socket */
+#endif
   PROTOBUF_C_RPC_ADDRESS_TCP     /* host/port tcp socket */
 } ProtobufC_RPC_AddressType;
 
@@ -203,9 +205,12 @@ typedef protobuf_c_boolean
           (*ProtobufC_RPC_IsRpcThreadFunc) (ProtobufC_RPC_Server *server,
                                             ProtobufCRPCDispatch    *dispatch,
                                             void                 *is_rpc_data);
+
+#ifndef WIN32
 void protobuf_c_rpc_server_configure_threading (ProtobufC_RPC_Server *server,
                                                 ProtobufC_RPC_IsRpcThreadFunc func,
                                                 void          *is_rpc_data);
+#endif
 
 
 /* Error handling */

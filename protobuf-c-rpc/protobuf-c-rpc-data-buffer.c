@@ -18,7 +18,9 @@
 
 #define BUFFER_RECYCLING                0
 
+#ifndef _WIN32_WCE
 #include <sys/types.h>
+#endif
 #if HAVE_SYS_UIO_H /* writev function isn't available on Windows */
 #include <sys/uio.h>
 #endif
@@ -33,6 +35,14 @@
 #if HAVE_ALLOCA_H
 # include <alloca.h>
 #endif
+
+#ifdef WIN32
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#include <WinSock2.h>
+#include <Ws2tcpip.h>
+#include "protobuf-c-rpc-win.h"
+#endif
+
 #include <stdlib.h>
 #include "protobuf-c-rpc.h"
 #include "protobuf-c-rpc-data-buffer.h"
@@ -44,6 +54,11 @@
 
 #define PROTOBUF_C_RPC_FRAGMENT_DATA_SIZE        4096
 #define PROTOBUF_C_RPC_FRAGMENT_DATA(frag)     ((uint8_t*)(((ProtobufCRPCDataBufferFragment*)(frag))+1))
+
+#ifdef WIN32
+// Visual C++ knows about inline and __inline, but Visual C only knows about __inline.
+#define inline __inline
+#endif
 
 /* --- ProtobufCRPCDataBufferFragment implementation --- */
 static inline int 
@@ -560,7 +575,6 @@ errno_is_ignorable (int e)
   return e == EINTR || e == EAGAIN;
 }
 
-#if HAVE_SYS_UIO_H
 /**
  * protobuf_c_rpc_data_buffer_writev:
  * @read_from: buffer to take data from.
@@ -576,10 +590,14 @@ errno_is_ignorable (int e)
  */
 int
 protobuf_c_rpc_data_buffer_writev (ProtobufCRPCDataBuffer       *read_from,
-		   int              fd)
+		   ProtobufC_RPC_FD              fd)
 {
   int rv;
+#if HAVE_SYS_UIO_H
   struct iovec *iov;
+#elif defined(WIN32)
+  WSABUF *iov;
+#endif
   int nfrag, i;
   ProtobufCRPCDataBufferFragment *frag_at = read_from->first_frag;
   CHECK_INTEGRITY (read_from);
@@ -589,25 +607,37 @@ protobuf_c_rpc_data_buffer_writev (ProtobufCRPCDataBuffer       *read_from,
 #endif
        ; nfrag++)
     frag_at = frag_at->next;
+#if HAVE_SYS_UIO_H
   iov = (struct iovec *) alloca (sizeof (struct iovec) * nfrag);
+#elif defined(WIN32)
+  iov = (WSABUF *) alloca (sizeof (WSABUF) * nfrag);
+#endif
   frag_at = read_from->first_frag;
   for (i = 0; i < nfrag; i++)
     {
+#if HAVE_SYS_UIO_H
       iov[i].iov_len = frag_at->buf_length;
       iov[i].iov_base = protobuf_c_rpc_data_buffer_fragment_start (frag_at);
+#elif defined(WIN32)
+      iov[i].len = frag_at->buf_length;
+      iov[i].buf = protobuf_c_rpc_data_buffer_fragment_start (frag_at);
+#endif
       frag_at = frag_at->next;
     }
+#if HAVE_SYS_UIO_H
   rv = writev (fd, iov, nfrag);
   if (rv < 0 && errno_is_ignorable (errno))
     return 0;
   if (rv <= 0)
     return rv;
+#elif defined(WIN32)
+  if (WSASend(fd, iov, nfrag, &rv, 0, NULL, NULL))
+      return -1; // consult errno (WSAGetLastError)
+#endif
   protobuf_c_rpc_data_buffer_discard (read_from, rv);
   return rv;
 }
-#endif
 
-#if HAVE_SYS_UIO_H
 /**
  * protobuf_c_rpc_data_buffer_writev_len:
  * @read_from: buffer to take data from.
@@ -626,11 +656,15 @@ protobuf_c_rpc_data_buffer_writev (ProtobufCRPCDataBuffer       *read_from,
 #define MIN(a,b)   ((a) < (b) ? (a) : (b))
 int
 protobuf_c_rpc_data_buffer_writev_len (ProtobufCRPCDataBuffer *read_from,
-		       int        fd,
+		       ProtobufC_RPC_FD        fd,
 		       size_t      max_bytes)
 {
   int rv;
+#if HAVE_SYS_UIO_H
   struct iovec *iov;
+#elif defined(WIN32)
+  WSABUF *iov;
+#endif
   int nfrag, i;
   size_t bytes;
   ProtobufCRPCDataBufferFragment *frag_at = read_from->first_frag;
@@ -644,25 +678,38 @@ protobuf_c_rpc_data_buffer_writev_len (ProtobufCRPCDataBuffer *read_from,
       bytes += frag_at->buf_length;
       frag_at = frag_at->next;
     }
+#if HAVE_SYS_UIO_H
   iov = (struct iovec *) alloca (sizeof (struct iovec) * nfrag);
+#elif defined(WIN32)
+  iov = (WSABUF *) alloca (sizeof (WSABUF) * nfrag);
+#endif
   frag_at = read_from->first_frag;
   for (bytes = max_bytes, i = 0; i < nfrag && bytes > 0; i++)
     {
       size_t frag_bytes = MIN (frag_at->buf_length, bytes);
+#if HAVE_SYS_UIO_H
       iov[i].iov_len = frag_bytes;
       iov[i].iov_base = protobuf_c_rpc_data_buffer_fragment_start (frag_at);
+#elif defined(WIN32)
+      iov[i].len = frag_bytes;
+      iov[i].buf = protobuf_c_rpc_data_buffer_fragment_start (frag_at);
+#endif
       frag_at = frag_at->next;
       bytes -= frag_bytes;
     }
+#if HAVE_SYS_UIO_H
   rv = writev (fd, iov, i);
   if (rv < 0 && errno_is_ignorable (errno))
     return 0;
   if (rv <= 0)
     return rv;
+#elif defined(WIN32)
+  if (WSASend(fd, iov, i, &rv, 0, NULL, NULL))
+      return -1; // consult errno (WSAGetLastError)
+#endif
   protobuf_c_rpc_data_buffer_discard (read_from, rv);
   return rv;
 }
-#endif
 
 /**
  * protobuf_c_rpc_data_buffer_read_in_fd:
@@ -678,7 +725,7 @@ protobuf_c_rpc_data_buffer_writev_len (ProtobufCRPCDataBuffer *read_from,
 /* TODO: zero-copy! */
 int
 protobuf_c_rpc_data_buffer_read_in_fd(ProtobufCRPCDataBuffer *write_to,
-                      int        read_from)
+                      ProtobufC_RPC_FD        read_from)
 {
   char buf[8192];
   int rv = read (read_from, buf, sizeof (buf));
