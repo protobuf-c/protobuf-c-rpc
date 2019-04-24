@@ -1,5 +1,5 @@
 #ifndef __PROTOBUF_SIMPLERPC_H_
-#ifndef __PROTOBUF_SIMPLERPC_H_
+#define __PROTOBUF_SIMPLERPC_H_ 1
 
 #include <protobuf-c/protobuf-c.h>
 
