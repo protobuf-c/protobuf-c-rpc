@@ -116,12 +116,12 @@ size_t   protobuf_c_rpc_data_buffer_transfer            (ProtobufCRPCDataBuffer 
 
 /* file-descriptor mucking */
 int      protobuf_c_rpc_data_buffer_writev              (ProtobufCRPCDataBuffer       *read_from,
-                                         int              fd);
+                                         ProtobufC_RPC_FD              fd);
 int      protobuf_c_rpc_data_buffer_writev_len          (ProtobufCRPCDataBuffer       *read_from,
-                                         int              fd,
+                                         ProtobufC_RPC_FD              fd,
 					 size_t           max_bytes);
 int      protobuf_c_rpc_data_buffer_read_in_fd          (ProtobufCRPCDataBuffer       *write_to,
-                                         int              read_from);
+                                         ProtobufC_RPC_FD              read_from);
 
 /* This deallocates memory used by the buffer-- you are responsible
  * for the allocation and deallocation of the ProtobufCRPCDataBuffer itself. */

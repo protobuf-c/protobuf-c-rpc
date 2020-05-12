@@ -38,39 +38,48 @@
 #if HAVE_ALLOCA_H
 # include <alloca.h>
 #endif
+#ifndef WIN32
 #include <sys/time.h>
 #include <unistd.h>
+#endif
+
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #if HAVE_SYS_POLL_H
 # include <sys/poll.h>
 # define USE_POLL              1
+#elif WIN32
+# define _WINSOCK_DEPRECATED_NO_WARNINGS
+# include <WinSock2.h>
+# include <WinNT.h>
+# include "protobuf-c-rpc-win.h"
+# if(_WIN32_WINNT >= 0x0600)
+#  define USE_POLL             1
+# else
+/* Windows XP / WinCE select() path */
+#  define USE_POLL             0
+# endif
 #elif HAVE_SYS_SELECT_H
 # include <sys/select.h>
 # define USE_POLL              0
 #endif
-
-/* windows annoyances:  use select, use a full-fledges map for fds */
-#ifdef WIN32
-# include <winsock.h>
-# define USE_POLL              0
-# define HAVE_SMALL_FDS            0
-#endif
 #include <limits.h>
 #include <errno.h>
+#ifndef _WIN32_WCE
 #include <signal.h>
+#endif
 #include "protobuf-c-rpc.h"
 #include "protobuf-c-rpc-dispatch.h"
-#include "gskrbtreemacros.h"
 #include "gsklistmacros.h"
+
+#ifdef WIN32
+// Visual C++ knows about inline and __inline, but Visual C only knows about __inline.
+#define inline __inline
+#endif
 
 #define DEBUG_DISPATCH_INTERNALS  0
 #define DEBUG_DISPATCH            0
-
-#ifndef HAVE_SMALL_FDS
-# define HAVE_SMALL_FDS           1
-#endif
 
 #define protobuf_c_rpc_assert(condition) assert(condition)
 
@@ -92,22 +101,11 @@ struct _Callback
 typedef struct _FDMap FDMap;
 struct _FDMap
 {
+  int fd;
   int notify_desired_index;     /* -1 if not an known fd */
   int change_index;             /* -1 if no prior change */
   int closed_since_notify_started;
 };
-
-#if !HAVE_SMALL_FDS
-typedef struct _FDMapNode FDMapNode;
-struct _FDMapNode
-{
-  ProtobufC_RPC_FD fd;
-  FDMapNode *left, *right, *parent;
-  protobuf_c_boolean is_red;
-  FDMap map;
-};
-#endif
-
 
 typedef struct _RealDispatch RealDispatch;
 struct _RealDispatch
@@ -116,16 +114,13 @@ struct _RealDispatch
   Callback *callbacks;          /* parallels notifies_desired */
   size_t notifies_desired_alloced;
   size_t changes_alloced;
-#if HAVE_SMALL_FDS
-  FDMap *fd_map;                /* map indexed by fd */
-  size_t fd_map_size;           /* number of elements of fd_map */
-#else
-  FDMapNode *fd_map_tree;       /* map indexed by fd */
-#endif
+  FDMap *fd_map;                /* map sorted by fd */
+  size_t fd_map_size;           /* number of valid elements of fd_map */
+  size_t fd_map_capacity;       /* number of elements allocated in fd_map */
 
   protobuf_c_boolean is_dispatching;
 
-  ProtobufCRPCDispatchTimer *timer_tree;
+  ProtobufCRPCDispatchTimer *timer_list;
   ProtobufCAllocator *allocator;
   ProtobufCRPCDispatchTimer *recycled_timeouts;
 
@@ -141,9 +136,7 @@ struct _ProtobufCRPCDispatchTimer
   unsigned long timeout_secs;
   unsigned timeout_usecs;
 
-  /* red-black tree stuff */
-  ProtobufCRPCDispatchTimer *left, *right, *parent;
-  protobuf_c_boolean is_red;
+  ProtobufCRPCDispatchTimer *prev, *next;
 
   /* user callback */
   ProtobufCRPCDispatchTimerFunc func;
@@ -160,38 +153,56 @@ struct _ProtobufCRPCDispatchIdle
   ProtobufCRPCDispatchIdleFunc func;
   void *func_data;
 };
-/* Define the tree of timers, as per gskrbtreemacros.h */
-#define TIMER_GET_IS_RED(n)      ((n)->is_red)
-#define TIMER_SET_IS_RED(n,v)    ((n)->is_red = (v))
-#define TIMERS_COMPARE(a,b, rv) \
-  if (a->timeout_secs < b->timeout_secs) rv = -1; \
-  else if (a->timeout_secs > b->timeout_secs) rv = 1; \
-  else if (a->timeout_usecs < b->timeout_usecs) rv = -1; \
-  else if (a->timeout_usecs > b->timeout_usecs) rv = 1; \
-  else if (a < b) rv = -1; \
-  else if (a > b) rv = 1; \
-  else rv = 0;
-#define GET_TIMER_TREE(d) \
-  (d)->timer_tree, ProtobufCRPCDispatchTimer *, \
-  TIMER_GET_IS_RED, TIMER_SET_IS_RED, \
-  parent, left, right, \
-  TIMERS_COMPARE
 
-#if !HAVE_SMALL_FDS
-#define FD_MAP_NODES_COMPARE(a,b, rv) \
-  if (a->fd < b->fd) rv = -1; \
-  else if (a->fd > b->fd) rv = 1; \
-  else rv = 0;
-#define GET_FD_MAP_TREE(d) \
-  (d)->fd_map_tree, FDMapNode *, \
-  TIMER_GET_IS_RED, TIMER_SET_IS_RED, \
-  parent, left, right, \
-  FD_MAP_NODES_COMPARE
-#define COMPARE_FD_TO_FD_MAP_NODE(a,b, rv) \
-  if (a < b->fd) rv = -1; \
-  else if (a > b->fd) rv = 1; \
-  else rv = 0;
+static inline int
+compare_timers (ProtobufCRPCDispatchTimer * a, ProtobufCRPCDispatchTimer * b)
+{
+  if (a->timeout_secs < b->timeout_secs)
+    return -1;
+  else if (a->timeout_secs > b->timeout_secs)
+    return 1;
+  else if (a->timeout_usecs < b->timeout_usecs)
+    return -1;
+  else if (a->timeout_usecs > b->timeout_usecs)
+    return 1;
+  else if (a < b)
+    return -1;
+  else if (a > b)
+    return 1;
+  else
+    return 0;
+}
+
+static inline void
+get_timestamp(struct timeval* timestamp)
+{
+#ifndef WIN32 /*LINUX*/
+    gettimeofday (timestamp, NULL);
+#else
+    // Number of 100 nanosecond between January 1, 1601 and January 1, 1970.
+    static const ULONGLONG epochBias = 116444736000000000ULL;
+    static const ULONGLONG hundredsOfNanosecondsPerMicrosecond = 10;
+    static const ULONGLONG microsecondsPerSecond = 1000000;
+    FILETIME fileTime;
+    ULARGE_INTEGER dateTime;
+    ULONGLONG t;
+
+    if (!timestamp)
+        return;
+
+    GetSystemTimeAsFileTime(&fileTime);
+    // As per Windows documentation for FILETIME, copy the resulting FILETIME structure to a
+    // ULARGE_INTEGER structure using memcpy (using memcpy instead of direct assignment can
+    // prevent alignment faults on 64-bit Windows).
+    memcpy(&dateTime, &fileTime, sizeof(dateTime));
+
+    // Windows file times are in 100s of nanoseconds.
+    t = (dateTime.QuadPart - epochBias) / hundredsOfNanosecondsPerMicrosecond;
+
+    timestamp->tv_sec = (long)(t / microsecondsPerSecond);
+    timestamp->tv_usec = (long)(t % microsecondsPerSecond);
 #endif
+}
 
 /* declare the idle-handler list */
 #define GET_IDLE_LIST(d) \
@@ -202,6 +213,7 @@ ProtobufCRPCDispatch *protobuf_c_rpc_dispatch_new (ProtobufCAllocator *allocator
 {
   RealDispatch *rv = ALLOC (sizeof (RealDispatch));
   struct timeval tv;
+
   rv->base.n_changes = 0;
   rv->notifies_desired_alloced = 8;
   rv->base.notifies_desired = ALLOC (sizeof (ProtobufC_RPC_FDNotify) * rv->notifies_desired_alloced);
@@ -209,43 +221,30 @@ ProtobufCRPCDispatch *protobuf_c_rpc_dispatch_new (ProtobufCAllocator *allocator
   rv->callbacks = ALLOC (sizeof (Callback) * rv->notifies_desired_alloced);
   rv->changes_alloced = 8;
   rv->base.changes = ALLOC (sizeof (ProtobufC_RPC_FDNotifyChange) * rv->changes_alloced);
-#if HAVE_SMALL_FDS
-  rv->fd_map_size = 16;
-  rv->fd_map = ALLOC (sizeof (FDMap) * rv->fd_map_size);
-  memset (rv->fd_map, 255, sizeof (FDMap) * rv->fd_map_size);
-#else
-  rv->fd_map_tree = NULL;
-#endif
+  rv->fd_map_size = 0;
+  rv->fd_map_capacity = 16;
+  rv->fd_map = ALLOC (sizeof (FDMap) * rv->fd_map_capacity);
+  memset(rv->fd_map, 255, sizeof(FDMap) * rv->fd_map_capacity);
   rv->allocator = allocator;
-  rv->timer_tree = NULL;
+  rv->timer_list = NULL;
   rv->first_idle = rv->last_idle = NULL;
   rv->base.has_idle = 0;
   rv->recycled_idles = NULL;
   rv->recycled_timeouts = NULL;
   rv->is_dispatching = 0;
 
+#ifndef WIN32
   /* need to handle SIGPIPE more gracefully than default */
   signal (SIGPIPE, SIG_IGN);
+#endif
 
-  gettimeofday (&tv, NULL);
+  get_timestamp(&tv);
+
   rv->base.last_dispatch_secs = tv.tv_sec;
   rv->base.last_dispatch_usecs = tv.tv_usec;
 
   return &rv->base;
 }
-
-#if !HAVE_SMALL_FDS
-void free_fd_tree_recursive (ProtobufCAllocator *allocator,
-                             FDMapNode          *node)
-{
-  if (node)
-    {
-      free_fd_tree_recursive (allocator, node->left);
-      free_fd_tree_recursive (allocator, node->right);
-      FREE (node);
-    }
-}
-#endif
 
 /* XXX: leaking timer_tree seemingly? */
 void
@@ -256,7 +255,7 @@ protobuf_c_rpc_dispatch_free(ProtobufCRPCDispatch *dispatch)
   while (d->recycled_timeouts != NULL)
     {
       ProtobufCRPCDispatchTimer *t = d->recycled_timeouts;
-      d->recycled_timeouts = t->right;
+      d->recycled_timeouts = t->next;
       FREE (t);
     }
   while (d->recycled_idles != NULL)
@@ -268,12 +267,7 @@ protobuf_c_rpc_dispatch_free(ProtobufCRPCDispatch *dispatch)
   FREE (d->base.notifies_desired);
   FREE (d->base.changes);
   FREE (d->callbacks);
-
-#if HAVE_SMALL_FDS
   FREE (d->fd_map);
-#else
-  free_fd_tree_recursive (allocator, d->fd_map_tree);
-#endif
   FREE (d);
 }
 
@@ -298,10 +292,17 @@ system_free(void *allocator_data, void *data)
    free(data);
 }
 
+/* Visual C doesn't understand this initialization syntax.
 static ProtobufCAllocator protobuf_c_rpc__allocator = {
    .alloc = &system_alloc,
    .free = &system_free,
    .allocator_data = NULL,
+};
+*/
+static ProtobufCAllocator protobuf_c_rpc__allocator = {
+   &system_alloc,
+   &system_free,
+   NULL,
 };
 
 /* TODO: perhaps thread-private dispatches make more sense? */
@@ -314,34 +315,19 @@ ProtobufCRPCDispatch  *protobuf_c_rpc_dispatch_default (void)
   return def;
 }
 
-#if HAVE_SMALL_FDS
 static void
-enlarge_fd_map (RealDispatch *d,
-                unsigned      fd)
+enlarge_fd_map (RealDispatch *d)
 {
-  size_t new_size = d->fd_map_size * 2;
+  size_t new_capacity = d->fd_map_capacity * 2;
   FDMap *new_map;
   ProtobufCAllocator *allocator = d->allocator;
-  while (fd >= new_size)
-    new_size *= 2;
-  new_map = ALLOC (sizeof (FDMap) * new_size);
+  new_map = ALLOC (sizeof (FDMap) * new_capacity);
+  memset (new_map, 255, sizeof(FDMap) * new_capacity); 
   memcpy (new_map, d->fd_map, d->fd_map_size * sizeof (FDMap));
-  memset (new_map + d->fd_map_size,
-          255,
-          sizeof (FDMap) * (new_size - d->fd_map_size));
   FREE (d->fd_map);
   d->fd_map = new_map;
-  d->fd_map_size = new_size;
+  d->fd_map_capacity = new_capacity;
 }
-
-static inline void
-ensure_fd_map_big_enough (RealDispatch *d,
-                          unsigned      fd)
-{
-  if (fd >= d->fd_map_size)
-    enlarge_fd_map (d, fd);
-}
-#endif
 
 static unsigned
 allocate_notifies_desired_index (RealDispatch *d)
@@ -386,40 +372,51 @@ allocate_change_index (RealDispatch *d)
 static inline FDMap *
 get_fd_map (RealDispatch *d, ProtobufC_RPC_FD fd)
 {
-#if HAVE_SMALL_FDS
-  if ((unsigned)fd >= d->fd_map_size)
+  uint32_t low = 0, high = d->fd_map_size, mid;
+  FDMap * map = NULL;
+  while (low < high) {
+    mid = (low + high) / 2;
+    map = d->fd_map + mid;
+    if (map->fd >= fd)
+      high = mid;
+    else
+      low = mid + 1;
+  }
+  map = d->fd_map + low;
+  if (!map || map->fd != fd)
     return NULL;
-  else
-    return d->fd_map + fd;
-#else
-  FDMapNode *node;
-  GSK_RBTREE_LOOKUP_COMPARATOR (GET_FD_MAP_TREE (d), fd, COMPARE_FD_TO_FD_MAP_NODE, node);
-  return node ? &node->map : NULL;
-#endif
+  return map;
 }
+
 static inline FDMap *
 force_fd_map (RealDispatch *d, ProtobufC_RPC_FD fd)
 {
-#if HAVE_SMALL_FDS
-  ensure_fd_map_big_enough (d, fd);
-  return d->fd_map + fd;
-#else
-  {
-    FDMap *fm = get_fd_map (d, fd);
-    ProtobufCAllocator *allocator = d->allocator;
-    if (fm == NULL)
-      {
-        FDMapNode *node = ALLOC (sizeof (FDMapNode));
-        FDMapNode *conflict;
-        node->fd = fd;
-        memset (&node->map, 255, sizeof (FDMap));
-        GSK_RBTREE_INSERT (GET_FD_MAP_TREE (d), node, conflict);
-        assert (conflict == NULL);
-        fm = &node->map;
-      }
-    return fm;
-  }
-#endif
+  FDMap *fm = get_fd_map (d, fd);
+  if (fm == NULL)
+    {
+      uint32_t low = 0, high = d->fd_map_size, mid;
+      FDMap * map = NULL;
+      if (d->fd_map_size == d->fd_map_capacity)
+        {
+          enlarge_fd_map(d);
+        }
+      while (low < high)
+        {
+          mid = (low + high) / 2;
+          map = d->fd_map + mid;
+
+          if (map->fd >= fd)
+            high = mid;
+          else
+            low = mid + 1;
+        }
+      fm = d->fd_map + low;
+      memmove(fm + 1, fm, sizeof(FDMap) * (d->fd_map_size - low));
+      memset(fm, 255, sizeof(FDMap));
+      fm->fd = fd;
+      d->fd_map_size++;
+    }
+  return fm;
 }
 
 static void
@@ -563,11 +560,40 @@ protobuf_c_rpc_dispatch_fd_closed(ProtobufCRPCDispatch *dispatch,
 }
 
 static void
-free_timer (ProtobufCRPCDispatchTimer *timer)
+remove_timer(RealDispatch *d, ProtobufCRPCDispatchTimer * timer)
 {
-  RealDispatch *d = timer->dispatch;
-  timer->right = d->recycled_timeouts;
+  if (timer == d->timer_list)
+    {
+      if (!timer->next)
+        d->timer_list = NULL;
+      else
+        d->timer_list = timer->next;
+    }
+  else if (timer->prev)
+    timer->prev->next = timer->next;
+  if (timer->next)
+    timer->next->prev = timer->prev;
+
+  timer->next = d->recycled_timeouts;
   d->recycled_timeouts = timer;
+}
+
+static void
+insert_timer(RealDispatch *d, ProtobufCRPCDispatchTimer *timer, ProtobufCRPCDispatchTimer * after)
+{
+  if (after) {
+    if (after->next)
+      after->next->prev = timer;
+    timer->next = after->next;
+    timer->prev = after;
+    after->next = timer;
+  }
+  else {
+    timer->next = d->timer_list;
+    timer->prev = NULL;
+    d->timer_list->prev = timer;
+    d->timer_list = timer;
+  }
 }
 
 void
@@ -576,7 +602,6 @@ protobuf_c_rpc_dispatch_dispatch (ProtobufCRPCDispatch *dispatch,
                               ProtobufC_RPC_FDNotify *notifies)
 {
   RealDispatch *d = (RealDispatch *) dispatch;
-  unsigned fd_max;
   unsigned i;
   struct timeval tv;
 
@@ -586,24 +611,18 @@ protobuf_c_rpc_dispatch_dispatch (ProtobufCRPCDispatch *dispatch,
   protobuf_c_rpc_assert (!d->is_dispatching);
   d->is_dispatching = 1;
 
-  gettimeofday (&tv, NULL);
+  get_timestamp (&tv);
   dispatch->last_dispatch_secs = tv.tv_sec;
   dispatch->last_dispatch_usecs = tv.tv_usec;
-
-  fd_max = 0;
   for (i = 0; i < n_notifies; i++)
-    if (fd_max < (unsigned) notifies[i].fd)
-      fd_max = notifies[i].fd;
-  ensure_fd_map_big_enough (d, fd_max);
-  for (i = 0; i < n_notifies; i++)
-    d->fd_map[notifies[i].fd].closed_since_notify_started = 0;
+    force_fd_map(d, notifies[i].fd)->closed_since_notify_started = 0;
   for (i = 0; i < n_notifies; i++)
     {
       unsigned fd = notifies[i].fd;
-      if (!d->fd_map[fd].closed_since_notify_started
-       && d->fd_map[fd].notify_desired_index != -1)
+      FDMap * fdmap = force_fd_map(d, fd);
+      if (fdmap->notify_desired_index != -1)
         {
-          unsigned nd_ind = d->fd_map[fd].notify_desired_index;
+          unsigned nd_ind = fdmap->notify_desired_index;
           unsigned events = d->base.notifies_desired[nd_ind].events & notifies[i].events;
           if (events != 0)
             d->callbacks[nd_ind].func (fd, events, d->callbacks[nd_ind].data);
@@ -612,7 +631,7 @@ protobuf_c_rpc_dispatch_dispatch (ProtobufCRPCDispatch *dispatch,
 
   /* clear changes */
   for (i = 0; i < dispatch->n_changes; i++)
-    d->fd_map[dispatch->changes[i].fd].change_index = -1;
+    force_fd_map(d, dispatch->changes[i].fd)->change_index = -1;
   dispatch->n_changes = 0;
 
   /* handle idle functions */
@@ -621,8 +640,12 @@ protobuf_c_rpc_dispatch_dispatch (ProtobufCRPCDispatch *dispatch,
       ProtobufCRPCDispatchIdle *idle = d->first_idle;
       ProtobufCRPCDispatchIdleFunc func = idle->func;
       void *data = idle->func_data;
+#ifndef _MSC_VER
       GSK_LIST_REMOVE_FIRST (GET_IDLE_LIST (d));
-
+#else
+      // MSVC 2008 (and possibly later versions) does not expand macros within macros as required by this code, so we'll do it by hand:
+      GSK_LIST_REMOVE_FIRST_(ProtobufCRPCDispatchIdle *, d->first_idle, d->last_idle, prev, next);
+#endif
       idle->func = NULL;                /* set to NULL to render remove_idle a no-op */
       func (dispatch, data);
 
@@ -632,23 +655,21 @@ protobuf_c_rpc_dispatch_dispatch (ProtobufCRPCDispatch *dispatch,
   dispatch->has_idle = 0;
 
   /* handle timers */
-  while (d->timer_tree != NULL)
+  while (d->timer_list != NULL)
     {
-      ProtobufCRPCDispatchTimer *min_timer;
-      GSK_RBTREE_FIRST (GET_TIMER_TREE (d), min_timer);
+      ProtobufCRPCDispatchTimer *min_timer = d->timer_list;
       if (min_timer->timeout_secs < (unsigned long) tv.tv_sec
        || (min_timer->timeout_secs == (unsigned long) tv.tv_sec
         && min_timer->timeout_usecs <= (unsigned) tv.tv_usec))
         {
           ProtobufCRPCDispatchTimerFunc func = min_timer->func;
           void *func_data = min_timer->func_data;
-          GSK_RBTREE_REMOVE (GET_TIMER_TREE (d), min_timer);
+          remove_timer(d, min_timer);
           /* Set to NULL as a way to tell protobuf_c_rpc_dispatch_remove_timer()
              that we are in the middle of notifying */
           min_timer->func = NULL;
           min_timer->func_data = NULL;
           func (&d->base, func_data);
-          free_timer (min_timer);
         }
       else
         {
@@ -658,7 +679,7 @@ protobuf_c_rpc_dispatch_dispatch (ProtobufCRPCDispatch *dispatch,
           break;
         }
     }
-  if (d->timer_tree == NULL)
+  if (d->timer_list == NULL)
     d->base.has_timeout = 0;
 
   /* Finish reentrance guard. */
@@ -679,6 +700,8 @@ protobuf_c_rpc_dispatch_clear_changes (ProtobufCRPCDispatch *dispatch)
   dispatch->n_changes = 0;
 }
 
+#if USE_POLL
+
 static inline unsigned
 events_to_pollfd_events (unsigned ev)
 {
@@ -694,10 +717,20 @@ pollfd_events_to_events (unsigned ev)
        ;
 }
 
+#endif
+
 void
 protobuf_c_rpc_dispatch_run (ProtobufCRPCDispatch *dispatch)
 {
+#if USE_POLL
   struct pollfd *fds;
+#else
+  fd_set fdread;
+  fd_set fdwrite;
+  fd_set fdexcep;
+  int maxfd = 0;
+  struct timeval timeval_timeout;
+#endif
   void *to_free = NULL, *to_free2 = NULL;
   size_t n_events;
   RealDispatch *d = (RealDispatch *) dispatch;
@@ -705,8 +738,10 @@ protobuf_c_rpc_dispatch_run (ProtobufCRPCDispatch *dispatch)
   unsigned i;
   int timeout;
   ProtobufC_RPC_FDNotify *events;
+
+#if USE_POLL
   if (dispatch->n_notifies_desired < 128)
-    fds = alloca (sizeof (struct pollfd) * dispatch->n_notifies_desired);
+    fds = (struct pollfd*) alloca (sizeof (struct pollfd) * dispatch->n_notifies_desired);
   else
     to_free = fds = ALLOC (sizeof (struct pollfd) * dispatch->n_notifies_desired);
   for (i = 0; i < dispatch->n_notifies_desired; i++)
@@ -715,6 +750,21 @@ protobuf_c_rpc_dispatch_run (ProtobufCRPCDispatch *dispatch)
       fds[i].events = events_to_pollfd_events (dispatch->notifies_desired[i].events);
       fds[i].revents = 0;
     }
+#else
+  FD_ZERO(&fdread);
+  FD_ZERO(&fdwrite);
+  FD_ZERO(&fdexcep);
+  for (i = 0; i < dispatch->n_notifies_desired; i++)
+    {
+      if (dispatch->notifies_desired[i].events & PROTOBUF_C_RPC_EVENT_READABLE)
+        FD_SET(dispatch->notifies_desired[i].fd, &fdread);
+      if (dispatch->notifies_desired[i].events & PROTOBUF_C_RPC_EVENT_WRITABLE)
+        FD_SET(dispatch->notifies_desired[i].fd, &fdwrite);
+      FD_SET(dispatch->notifies_desired[i].fd, &fdexcep);
+      if (dispatch->notifies_desired[i].fd > maxfd)
+        maxfd = dispatch->notifies_desired[i].fd;
+    }
+#endif
 
   /* compute timeout */
   if (dispatch->has_idle)
@@ -724,7 +774,7 @@ protobuf_c_rpc_dispatch_run (ProtobufCRPCDispatch *dispatch)
   else
     {
       struct timeval tv;
-      gettimeofday (&tv, NULL);
+      get_timestamp (&tv);
       if (dispatch->timeout_secs < (unsigned long) tv.tv_sec
        || (dispatch->timeout_secs == (unsigned long) tv.tv_sec
         && dispatch->timeout_usecs <= (unsigned) tv.tv_usec))
@@ -746,8 +796,12 @@ protobuf_c_rpc_dispatch_run (ProtobufCRPCDispatch *dispatch)
             timeout = ds * 1000 + (du + 999) / 1000;
         }
     }
-
+#if USE_POLL
+#ifdef WIN32
+  if (dispatch->n_notifies_desired && WSAPoll(fds, dispatch->n_notifies_desired, timeout) < 0)
+#else
   if (poll (fds, dispatch->n_notifies_desired, timeout) < 0)
+#endif
     {
       if (errno == EINTR)
         return;   /* probably a signal interrupted the poll-- let the user have control */
@@ -760,12 +814,34 @@ protobuf_c_rpc_dispatch_run (ProtobufCRPCDispatch *dispatch)
   for (i = 0; i < dispatch->n_notifies_desired; i++)
     if (fds[i].revents)
       n_events++;
+#else
+  if (timeout != -1)
+    {
+      timeval_timeout.tv_sec = timeout / 1000;
+      timeval_timeout.tv_usec = (timeout % 1000) * 1000;
+    }
+  if (dispatch->n_notifies_desired)
+    n_events = select(maxfd + 1, &fdread, &fdwrite, &fdexcep, timeout == -1 ? NULL : &timeval_timeout);
+  else
+    n_events = 0;
+  if (n_events == SOCKET_ERROR)
+    {
+      if (errno == EINTR)
+        return;   /* probably a signal interrupted the poll-- let the user have control */
+
+      /* i don't really know what would plausibly cause this */
+      fprintf (stderr, "select error: %s\n", strerror (errno));
+      return;
+    }
+#endif
   if (n_events < 128)
-    events = alloca (sizeof (ProtobufC_RPC_FDNotify) * n_events);
+    events = (ProtobufC_RPC_FDNotify*) alloca (sizeof (ProtobufC_RPC_FDNotify) * n_events);
   else
     to_free2 = events = ALLOC (sizeof (ProtobufC_RPC_FDNotify) * n_events);
   n_events = 0;
   for (i = 0; i < dispatch->n_notifies_desired; i++)
+  {
+#if USE_POLL
     if (fds[i].revents)
       {
         events[n_events].fd = fds[i].fd;
@@ -776,6 +852,20 @@ protobuf_c_rpc_dispatch_run (ProtobufCRPCDispatch *dispatch)
         if (events[n_events].events != 0)
           n_events++;
       }
+#else
+    if (FD_ISSET(dispatch->notifies_desired[i].fd, &fdread) ||
+        FD_ISSET(dispatch->notifies_desired[i].fd, &fdwrite))
+      {
+        events[n_events].fd = dispatch->notifies_desired[i].fd;
+        events[n_events].events = 0;
+        if (FD_ISSET(dispatch->notifies_desired[i].fd, &fdread))
+          events[n_events].events |= PROTOBUF_C_RPC_EVENT_READABLE;
+        if (FD_ISSET(dispatch->notifies_desired[i].fd, &fdwrite))
+          events[n_events].events |= PROTOBUF_C_RPC_EVENT_WRITABLE;
+        n_events++;
+      }
+#endif
+  }
   protobuf_c_rpc_dispatch_dispatch (dispatch, n_events, events);
   if (to_free)
     FREE (to_free);
@@ -798,28 +888,37 @@ protobuf_c_rpc_dispatch_add_timer(ProtobufCRPCDispatch *dispatch,
   if (d->recycled_timeouts != NULL)
     {
       rv = d->recycled_timeouts;
-      d->recycled_timeouts = rv->right;
+      d->recycled_timeouts = rv->next;
     }
   else
     {
       rv = d->allocator->alloc (d->allocator, sizeof (ProtobufCRPCDispatchTimer));
     }
+  rv->dispatch = d;
   rv->timeout_secs = timeout_secs;
   rv->timeout_usecs = timeout_usecs;
   rv->func = func;
   rv->func_data = func_data;
-  rv->dispatch = d;
-  GSK_RBTREE_INSERT (GET_TIMER_TREE (d), rv, conflict);
-  
-  /* is this the first element in the tree */
-  for (at = rv; at != NULL; at = at->parent)
-    if (at->parent && at->parent->right == at)
-      break;
-  if (at == NULL)               /* yes, so set the public members */
+  rv->next = NULL;
+  rv->prev = NULL;
+
+  if (!d->timer_list)
     {
       dispatch->has_timeout = 1;
       dispatch->timeout_secs = rv->timeout_secs;
       dispatch->timeout_usecs = rv->timeout_usecs;
+      d->timer_list = rv;
+    }
+  else
+    {
+      for (at = d->timer_list; at != NULL; at = at->next) {
+        if (compare_timers(rv, at) < 0) {
+          insert_timer(d, rv, at->prev);
+          break;
+        }
+      }
+      if (at == NULL)
+        insert_timer(d, rv, at);
     }
   return rv;
 }
@@ -855,16 +954,15 @@ void  protobuf_c_rpc_dispatch_remove_timer (ProtobufCRPCDispatchTimer *timer)
   may_be_first = d->base.timeout_usecs == timer->timeout_usecs
               && d->base.timeout_secs == timer->timeout_secs;
 
-  GSK_RBTREE_REMOVE (GET_TIMER_TREE (d), timer);
+  remove_timer(d, timer);
 
   if (may_be_first)
     {
-      if (d->timer_tree == NULL)
+      if (d->timer_list == NULL)
         d->base.has_timeout = 0;
       else
         {
-          ProtobufCRPCDispatchTimer *min;
-          GSK_RBTREE_FIRST (GET_TIMER_TREE (d), min);
+          ProtobufCRPCDispatchTimer *min = d->timer_list;
           d->base.timeout_secs = min->timeout_secs;
           d->base.timeout_usecs = min->timeout_usecs;
         }
@@ -887,7 +985,13 @@ protobuf_c_rpc_dispatch_add_idle (ProtobufCRPCDispatch *dispatch,
       ProtobufCAllocator *allocator = d->allocator;
       rv = ALLOC (sizeof (ProtobufCRPCDispatchIdle));
     }
+#ifndef _MSC_VER
   GSK_LIST_APPEND (GET_IDLE_LIST (d), rv);
+#else
+  // MSVC 2008 (and possibly later versions) does not expand macros within macros as required by this code, so we'll do it by hand:
+  GSK_LIST_APPEND_(ProtobufCRPCDispatchIdle *, d->first_idle, d->last_idle, prev, next, rv);
+#endif
+
   rv->func = func;
   rv->func_data = func_data;
   rv->dispatch = d;
@@ -901,7 +1005,12 @@ protobuf_c_rpc_dispatch_remove_idle (ProtobufCRPCDispatchIdle *idle)
   if (idle->func != NULL)
     {
       RealDispatch *d = idle->dispatch;
+#ifndef _MSC_VER
       GSK_LIST_REMOVE (GET_IDLE_LIST (d), idle);
+#else
+      // MSVC 2008 (and possibly later versions) does not expand macros within macros as required by this code, so we'll do it by hand:
+      GSK_LIST_REMOVE_(ProtobufCRPCDispatchIdle *, d->first_idle, d->last_idle, prev, next, idle);
+#endif
       idle->next = d->recycled_idles;
       d->recycled_idles = idle;
     }
