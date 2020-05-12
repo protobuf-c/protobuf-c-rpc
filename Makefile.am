@@ -52,8 +52,7 @@ protobuf_c_rpc_libprotobuf_c_rpc_la_SOURCES = \
 
 protobuf_c_rpc_libprotobuf_c_rpc_la_LDFLAGS = $(AM_LDFLAGS) \
 	-version-info $(LIBPROTOBUF_C_RPC_CURRENT):$(LIBPROTOBUF_C_RPC_REVISION):$(LIBPROTOBUF_C_RPC_AGE) \
-	-export-symbols-regex "^(protobuf_c_rpc_[a-z].*)" \
-	-no-undefined
+	-export-symbols-regex "^(protobuf_c_rpc_[a-z].*)"
 
 pkgconfig_DATA += protobuf-c-rpc/libprotobuf-c-rpc.pc
 CLEANFILES += protobuf-c-rpc/libprotobuf-c-rpc.pc
