@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <sys/stat.h>
 #include <sys/un.h>
+#include <endian.h>
 
 #include "protobuf-c-rpc.h"
 #include "protobuf-c-rpc-data-buffer.h"
@@ -280,7 +281,7 @@ free_server_request (ProtobufC_RPC_Server *server,
 static uint32_t
 uint32_to_le (uint32_t le)
 {
-#if !defined(WORDS_BIGENDIAN)
+#if BYTE_ORDER == LITTLE_ENDIAN
   return le;
 #else
   return (le << 24) | (le >> 24)

@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <endian.h>
 
 #include "protobuf-c-rpc.h"
 #include "protobuf-c-rpc-data-buffer.h"
@@ -435,7 +436,7 @@ grow_closure_array (ProtobufC_RPC_Client *client)
 static uint32_t
 uint32_to_le (uint32_t le)
 {
-#if !defined(WORDS_BIGENDIAN)
+#if BYTE_ORDER == LITTLE_ENDIAN
   return le;
 #else
   return (le << 24) | (le >> 24)
