@@ -65,10 +65,18 @@ EXTRA_DIST += protobuf-c-rpc/libprotobuf-c-rpc.pc.in
 LOG_COMPILER = $(VALGRIND)
 
 check_PROGRAMS += \
-	t/test-rpc
+	t/test-rpc \
+	t/test-dispatch
 
 TESTS += \
-	t/test-rpc
+	t/test-rpc \
+	t/test-dispatch
+
+t_test_dispatch_SOURCES = \
+	t/test-dispatch.c
+t_test_dispatch_LDADD = \
+	$(libprotobuf_c_LIBS) \
+	protobuf-c-rpc/libprotobuf-c-rpc.la
 
 t_test_rpc_SOURCES = \
 	t/test-rpc.c \

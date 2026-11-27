@@ -32,6 +32,7 @@
 typedef struct _ProtobufCRPCDispatch ProtobufCRPCDispatch;
 typedef struct _ProtobufCRPCDispatchTimer ProtobufCRPCDispatchTimer;
 typedef struct _ProtobufCRPCDispatchIdle ProtobufCRPCDispatchIdle;
+typedef struct _ProtobufCRPCDispatchPrepare ProtobufCRPCDispatchPrepare;
 
 #include <protobuf-c/protobuf-c.h>
 
@@ -95,6 +96,38 @@ ProtobufCRPCDispatchIdle *
                                     ProtobufCRPCDispatchIdleFunc func,
                                     void               *func_data);
 void  protobuf_c_rpc_dispatch_remove_idle (ProtobufCRPCDispatchIdle *);
+
+/* Prepare functions
+ *
+ * Unlike an idle function, a prepare function is not one-shot and does not make
+ * the dispatch poll with a zero timeout.  It stays registered until it is
+ * removed, and is called once per main-loop iteration, immediately before the
+ * dispatch works out how long to wait for events: after the callbacks of the
+ * previous iteration (fd callbacks, idle functions and timers) have run.
+ * It is the place to act on what those callbacks produced, for example to
+ * flush buffered output, and it may add or remove fds, timers and idle
+ * functions (and prepare functions).  It does not keep the loop alive.
+ *
+ * protobuf_c_rpc_dispatch_run() calls the prepare functions itself.  A program
+ * that embeds the dispatch in its own main-loop (see below) gets them from
+ * protobuf_c_rpc_dispatch_dispatch(), which calls them as its last step, so
+ * they run before each wait, except the first one.  Such a program can call
+ * protobuf_c_rpc_dispatch_run_prepares() itself, before it reads the fds and
+ * the timeout from the dispatch, to run them before the first wait too (or
+ * if it changed the dispatch outside of a callback); the following
+ * protobuf_c_rpc_dispatch_dispatch() then does not run them a second time.
+ *
+ * Prepare functions run in the order they were added.  A function added by a
+ * prepare function is first called in the next iteration.
+ */
+typedef void (*ProtobufCRPCDispatchPrepareFunc) (ProtobufCRPCDispatch *dispatch,
+                                              void               *func_data);
+ProtobufCRPCDispatchPrepare *
+      protobuf_c_rpc_dispatch_add_prepare (ProtobufCRPCDispatch *dispatch,
+                                       ProtobufCRPCDispatchPrepareFunc func,
+                                       void               *func_data);
+void  protobuf_c_rpc_dispatch_remove_prepare (ProtobufCRPCDispatchPrepare *);
+void  protobuf_c_rpc_dispatch_run_prepares (ProtobufCRPCDispatch *dispatch);
 
 /* --- API for use in standalone application --- */
 /* Where you are happy just to run poll(2). */
