@@ -705,7 +705,18 @@ update_connected_client_watch (ProtobufC_RPC_Client *client)
                                 handle_client_fd_events, client);
 }
 
-static void
+/* Newer protobuf-c (streaming support) has `invoke` return the input stream
+ * of a client-streaming call, or NULL. This client does not support
+ * streaming. */
+#ifdef PROTOBUF_C_STREAMING_MASK
+# define INVOKE_RETURN_TYPE ProtobufCInputStream *
+# define INVOKE_RETURN(value) return (value)
+#else
+# define INVOKE_RETURN_TYPE void
+# define INVOKE_RETURN(value) return
+#endif
+
+static INVOKE_RETURN_TYPE
 invoke_client_rpc (ProtobufCService *service,
                    unsigned          method_index,
                    const ProtobufCMessage *input,
@@ -714,6 +725,14 @@ invoke_client_rpc (ProtobufCService *service,
 {
   ProtobufC_RPC_Client *client = (ProtobufC_RPC_Client *) service;
   protobuf_c_rpc_assert (service->invoke == invoke_client_rpc);
+#ifdef PROTOBUF_C_STREAMING_MASK
+  if (method_index & PROTOBUF_C_STREAMING_MASK)
+    {
+      /* streaming is not supported: fail the call */
+      closure (NULL, closure_data);
+      return NULL;
+    }
+#endif
   switch (client->state)
     {
     case PROTOBUF_C_RPC_CLIENT_STATE_INIT:
@@ -737,6 +756,7 @@ invoke_client_rpc (ProtobufCService *service,
       closure (NULL, closure_data);
       break;
     }
+  INVOKE_RETURN (NULL);
 }
 
 static void

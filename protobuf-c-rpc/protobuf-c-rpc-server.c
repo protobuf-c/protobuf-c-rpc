@@ -392,6 +392,17 @@ get_rcvd_message_descriptor (const ProtobufC_RPC_Payload *payload, void *data)
       return NULL;
    }
 
+#ifdef PROTOBUF_C_STREAMING_MASK
+   if (service->descriptor->methods[method_index].flags != 0)
+   {
+      /* streaming methods are not supported over this protocol */
+      server_connection_failed (conn,
+            PROTOBUF_C_RPC_ERROR_CODE_BAD_REQUEST,
+            "streaming method_index %u is not supported", method_index);
+      return NULL;
+   }
+#endif
+
    return service->descriptor->methods[method_index].input;
 }
 
