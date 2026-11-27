@@ -101,9 +101,11 @@ void  protobuf_c_rpc_dispatch_remove_idle (ProtobufCRPCDispatchIdle *);
  *
  * Unlike an idle function, a prepare function is not one-shot and does not make
  * the dispatch poll with a zero timeout.  It stays registered until it is
- * removed, and is called once per main-loop iteration, immediately before the
- * dispatch works out how long to wait for events: after the callbacks of the
+ * removed, and is called before each wait for events, immediately before the
+ * dispatch works out how long to wait: after the callbacks of the
  * previous iteration (fd callbacks, idle functions and timers) have run.
+ * It may be called more than once between two waits, so it must be harmless
+ * to call when there is nothing to do.
  * It is the place to act on what those callbacks produced, for example to
  * flush buffered output, and it may add or remove fds, timers and idle
  * functions (and prepare functions).  It does not keep the loop alive.
@@ -113,9 +115,8 @@ void  protobuf_c_rpc_dispatch_remove_idle (ProtobufCRPCDispatchIdle *);
  * protobuf_c_rpc_dispatch_dispatch(), which calls them as its last step, so
  * they run before each wait, except the first one.  Such a program can call
  * protobuf_c_rpc_dispatch_run_prepares() itself, before it reads the fds and
- * the timeout from the dispatch, to run them before the first wait too (or
- * if it changed the dispatch outside of a callback); the following
- * protobuf_c_rpc_dispatch_dispatch() then does not run them a second time.
+ * the timeout from the dispatch, to run them before the first wait too, or
+ * after it changed the dispatch outside of a callback.
  *
  * Prepare functions run in the order they were added.  A function added by a
  * prepare function is first called in the next iteration.

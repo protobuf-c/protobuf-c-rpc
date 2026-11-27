@@ -58,9 +58,10 @@ test_runs_once_per_iteration (void)
   protobuf_c_rpc_dispatch_add_timer_millis (s.d, 50, timer_func, &s);
   while (!s.timer_fired)
     protobuf_c_rpc_dispatch_run (s.d);
-  /* one iteration to wait for the timer, one more at most (poll waking
-     slightly early); a spinning loop would have counted thousands */
-  assert (s.calls >= 1 && s.calls <= 3);
+  /* a couple of iterations to wait for the timer (poll may wake slightly
+     early), each calling it a couple of times; a spinning loop would have
+     counted thousands */
+  assert (s.calls >= 1 && s.calls <= 8);
   protobuf_c_rpc_dispatch_free (s.d);
 }
 
@@ -180,21 +181,22 @@ test_order (void)
   protobuf_c_rpc_dispatch_free (s.d);
 }
 
-/* One iteration of protobuf_c_rpc_dispatch_run() calls them exactly once. */
+/* One iteration of protobuf_c_rpc_dispatch_run() calls them before the wait
+ * (and once more at the end of its dispatch, for embedders). */
 static void
-test_once_in_run (void)
+test_in_run (void)
 {
   State s = { NEW_DISPATCH (), NULL, 0, 0, 0 };
   s.self = protobuf_c_rpc_dispatch_add_prepare (s.d, count_prepare, &s);
   protobuf_c_rpc_dispatch_add_timer_millis (s.d, 1, timer_func, &s);
   protobuf_c_rpc_dispatch_run (s.d);
-  assert (s.calls == 1);
+  assert (s.calls >= 1 && s.calls <= 2);
   protobuf_c_rpc_dispatch_free (s.d);
 }
 
 /* A caller that drives protobuf_c_rpc_dispatch_dispatch() itself and knows
- * nothing about prepare functions still gets them, once per dispatch; one
- * that calls run_prepares() before waiting does not get them twice. */
+ * nothing about prepare functions still gets them after each dispatch, so
+ * before each wait but the first; run_prepares() covers that one. */
 static void
 test_embedded (void)
 {
@@ -206,14 +208,10 @@ test_embedded (void)
   protobuf_c_rpc_dispatch_dispatch (s.d, 0, NULL);
   assert (s.calls == 2);
 
-  protobuf_c_rpc_dispatch_run_prepares (s.d);
+  protobuf_c_rpc_dispatch_run_prepares (s.d);   /* e.g. before the first wait */
   assert (s.calls == 3);
-  protobuf_c_rpc_dispatch_dispatch (s.d, 0, NULL);
-  assert (s.calls == 3);
-  protobuf_c_rpc_dispatch_run_prepares (s.d);
   protobuf_c_rpc_dispatch_dispatch (s.d, 0, NULL);
   assert (s.calls == 4);
-  /* and back to relying on dispatch_dispatch */
   protobuf_c_rpc_dispatch_dispatch (s.d, 0, NULL);
   assert (s.calls == 5);
   protobuf_c_rpc_dispatch_free (s.d);
@@ -227,7 +225,7 @@ main (void)
   test_remove_outside ();
   test_prepare_adds_idle ();
   test_order ();
-  test_once_in_run ();
+  test_in_run ();
   test_embedded ();
   puts ("dispatch: ok");
   return 0;

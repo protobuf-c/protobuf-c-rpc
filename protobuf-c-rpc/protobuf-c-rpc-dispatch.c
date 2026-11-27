@@ -135,7 +135,6 @@ struct _RealDispatch
   /* prepare functions, in the order they were added */
   ProtobufCRPCDispatchPrepare *first_prepare, *last_prepare;
   protobuf_c_boolean running_prepares;
-  protobuf_c_boolean prepares_ran;      /* since the last dispatch_dispatch */
   protobuf_c_boolean prepares_removed;  /* some are waiting to be unlinked */
 };
 
@@ -238,7 +237,6 @@ ProtobufCRPCDispatch *protobuf_c_rpc_dispatch_new (ProtobufCAllocator *allocator
   rv->base.has_idle = 0;
   rv->first_prepare = rv->last_prepare = NULL;
   rv->running_prepares = 0;
-  rv->prepares_ran = 0;
   rv->prepares_removed = 0;
   rv->recycled_idles = NULL;
   rv->recycled_timeouts = NULL;
@@ -689,11 +687,9 @@ protobuf_c_rpc_dispatch_dispatch (ProtobufCRPCDispatch *dispatch,
 
   /* Prepare functions run before every wait.  A caller that embeds the
      dispatch in its own main-loop may not know to call
-     protobuf_c_rpc_dispatch_run_prepares(): do it here, unless it has already
-     been done since the last time we were here. */
-  if (!d->prepares_ran)
-    protobuf_c_rpc_dispatch_run_prepares (dispatch);
-  d->prepares_ran = 0;
+     protobuf_c_rpc_dispatch_run_prepares(): do it here, which is just before
+     it reads what to wait for. */
+  protobuf_c_rpc_dispatch_run_prepares (dispatch);
 
   /* Finish reentrance guard. */
   d->is_dispatching = 0;
@@ -1000,8 +996,6 @@ protobuf_c_rpc_dispatch_run_prepares (ProtobufCRPCDispatch *dispatch)
   RealDispatch *d = (RealDispatch *) dispatch;
   ProtobufCRPCDispatchPrepare *p;
   ProtobufCRPCDispatchPrepare *last;
-
-  d->prepares_ran = 1;
 
   /* Run only the functions that exist now: one added by a prepare function
      waits for the next iteration. */
