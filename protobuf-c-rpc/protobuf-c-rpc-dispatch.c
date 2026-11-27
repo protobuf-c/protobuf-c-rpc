@@ -808,7 +808,18 @@ protobuf_c_rpc_dispatch_run (ProtobufCRPCDispatch *dispatch)
     if (fds[i].revents)
       {
         events[n_events].fd = fds[i].fd;
-        events[n_events].events = pollfd_events_to_events (fds[i].revents);
+        unsigned ev = pollfd_events_to_events (fds[i].revents);
+        unsigned want = dispatch->notifies_desired[i].events;
+
+        /* An error or a hangup must reach whoever watches the descriptor,
+           even if it only asked to be told about the other direction: poll
+           may return POLLERR alone, or POLLHUP for a descriptor that is
+           watched for writing only (a pipe nobody reads, a failed connect),
+           which would otherwise be dropped, and the callback would never find
+           out.  It learns what happened by trying. */
+        if ((fds[i].revents & (POLLERR|POLLHUP)) && (ev & want) == 0)
+          ev |= want;
+        events[n_events].events = ev;
 
         /* note that we may actually wind up with fewer events
            now that we actually call pollfd_events_to_events() */

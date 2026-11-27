@@ -222,6 +222,45 @@ test_embedded (void)
   protobuf_c_rpc_dispatch_free (s.d);
 }
 
+/* An error condition reaches the callback even when poll reports nothing but
+ * POLLERR: writing to a pipe whose read end is closed. */
+static int pipe_err_calls;
+
+static void
+on_pipe_error (ProtobufC_RPC_FD fd, unsigned events, void *data)
+{
+  (void) fd;
+  (void) data;
+  assert (events & PROTOBUF_C_RPC_EVENT_WRITABLE);
+  pipe_err_calls++;
+}
+
+static void
+timer_func2 (ProtobufCRPCDispatch *d, void *data)
+{
+  (void) d;
+  (void) data;
+}
+
+static void
+test_error_event (void)
+{
+  ProtobufCRPCDispatch *d = NEW_DISPATCH ();
+  int fds[2];
+  int i;
+  assert (pipe (fds) == 0);
+  close (fds[0]);
+  protobuf_c_rpc_dispatch_watch_fd (d, fds[1], PROTOBUF_C_RPC_EVENT_WRITABLE,
+                                    on_pipe_error, NULL);
+  /* the timer only bounds the wait if the callback is never called */
+  protobuf_c_rpc_dispatch_add_timer_millis (d, 300, timer_func2, NULL);
+  for (i = 0; i < 3 && pipe_err_calls == 0; i++)
+    protobuf_c_rpc_dispatch_run (d);
+  assert (pipe_err_calls > 0);
+  protobuf_c_rpc_dispatch_close_fd (d, fds[1]);
+  protobuf_c_rpc_dispatch_free (d);
+}
+
 /* A new dispatch has nothing to wait for. */
 static void
 test_new_is_idle (void)
@@ -236,6 +275,7 @@ int
 main (void)
 {
   test_new_is_idle ();
+  test_error_event ();
   test_runs_once_per_iteration ();
   test_remove_self ();
   test_remove_outside ();
