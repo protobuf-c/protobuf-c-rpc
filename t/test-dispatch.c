@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <protobuf-c-rpc/protobuf-c-rpc-dispatch.h>
@@ -9,8 +10,12 @@
 static void *
 test_alloc (void *data, size_t size)
 {
+  void *p = malloc (size);
   (void) data;
-  return malloc (size);
+  /* an allocator need not return zeroed memory: make sure nothing relies on it */
+  if (p != NULL)
+    memset (p, 0xbe, size);
+  return p;
 }
 static void
 test_free (void *data, void *ptr)
@@ -217,9 +222,20 @@ test_embedded (void)
   protobuf_c_rpc_dispatch_free (s.d);
 }
 
+/* A new dispatch has nothing to wait for. */
+static void
+test_new_is_idle (void)
+{
+  ProtobufCRPCDispatch *d = NEW_DISPATCH ();
+  assert (!d->has_timeout && !d->has_idle);
+  assert (d->n_notifies_desired == 0 && d->n_changes == 0);
+  protobuf_c_rpc_dispatch_free (d);
+}
+
 int
 main (void)
 {
+  test_new_is_idle ();
   test_runs_once_per_iteration ();
   test_remove_self ();
   test_remove_outside ();

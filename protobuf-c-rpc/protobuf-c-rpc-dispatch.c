@@ -217,6 +217,9 @@ ProtobufCRPCDispatch *protobuf_c_rpc_dispatch_new (ProtobufCAllocator *allocator
 {
   RealDispatch *rv = ALLOC (sizeof (RealDispatch));
   struct timeval tv;
+  /* the allocator need not clear memory: has_timeout and the timeout
+     were never initialized, so a dispatch could wait for garbage */
+  memset (rv, 0, sizeof (RealDispatch));
   rv->base.n_changes = 0;
   rv->notifies_desired_alloced = 8;
   rv->base.notifies_desired = ALLOC (sizeof (ProtobufC_RPC_FDNotify) * rv->notifies_desired_alloced);
