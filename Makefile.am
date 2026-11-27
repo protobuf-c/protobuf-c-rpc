@@ -50,6 +50,10 @@ protobuf_c_rpc_libprotobuf_c_rpc_la_SOURCES = \
 	protobuf-c-rpc/protobuf-c-rpc-client.c \
 	protobuf-c-rpc/protobuf-c-rpc-server.c
 
+# the library uses protobuf-c: record the dependency, so that a program that
+# links libprotobuf-c-rpc finds libprotobuf-c too
+protobuf_c_rpc_libprotobuf_c_rpc_la_LIBADD = $(libprotobuf_c_LIBS)
+
 protobuf_c_rpc_libprotobuf_c_rpc_la_LDFLAGS = $(AM_LDFLAGS) \
 	-version-info $(LIBPROTOBUF_C_RPC_CURRENT):$(LIBPROTOBUF_C_RPC_REVISION):$(LIBPROTOBUF_C_RPC_AGE) \
 	-export-symbols-regex "^(protobuf_c_rpc_[a-z].*)"
