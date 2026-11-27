@@ -2,6 +2,15 @@ protobuf-c-rpc (0.1) UNRELEASED
 
  * This is protobuf-c-rpc, which has been split out from protobuf-c.
 
+ * Add dispatch "prepare" functions: protobuf_c_rpc_dispatch_add_prepare() and
+   _remove_prepare().  Unlike idle functions they are not one-shot and do not
+   make the dispatch poll with timeout 0; they run before each wait, right
+   before the dispatch computes what to wait for.  Programs that embed the
+   dispatch in their own main-loop get them at the end of
+   protobuf_c_rpc_dispatch_dispatch(), and may call
+   protobuf_c_rpc_dispatch_run_prepares() to run them before the first wait.
+   They may run more than once between two waits.
+
  * Add protobuf_c_rpc_server_configure_threading().
 
  * rpc: Rename AF_LOCAL to AF_UNIX (Issue #86, #100).

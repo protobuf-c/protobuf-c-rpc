@@ -131,6 +131,11 @@ struct _RealDispatch
 
   ProtobufCRPCDispatchIdle *first_idle, *last_idle;
   ProtobufCRPCDispatchIdle *recycled_idles;
+
+  /* prepare functions, in the order they were added */
+  ProtobufCRPCDispatchPrepare *first_prepare, *last_prepare;
+  protobuf_c_boolean running_prepares;
+  protobuf_c_boolean prepares_removed;  /* some are waiting to be unlinked */
 };
 
 struct _ProtobufCRPCDispatchTimer
@@ -147,6 +152,16 @@ struct _ProtobufCRPCDispatchTimer
 
   /* user callback */
   ProtobufCRPCDispatchTimerFunc func;
+  void *func_data;
+};
+
+struct _ProtobufCRPCDispatchPrepare
+{
+  RealDispatch *dispatch;
+  ProtobufCRPCDispatchPrepare *next;
+
+  /* user callback; NULL once the prepare function has been removed */
+  ProtobufCRPCDispatchPrepareFunc func;
   void *func_data;
 };
 
@@ -202,6 +217,9 @@ ProtobufCRPCDispatch *protobuf_c_rpc_dispatch_new (ProtobufCAllocator *allocator
 {
   RealDispatch *rv = ALLOC (sizeof (RealDispatch));
   struct timeval tv;
+  /* the allocator need not clear memory: has_timeout and the timeout
+     were never initialized, so a dispatch could wait for garbage */
+  memset (rv, 0, sizeof (RealDispatch));
   rv->base.n_changes = 0;
   rv->notifies_desired_alloced = 8;
   rv->base.notifies_desired = ALLOC (sizeof (ProtobufC_RPC_FDNotify) * rv->notifies_desired_alloced);
@@ -220,6 +238,9 @@ ProtobufCRPCDispatch *protobuf_c_rpc_dispatch_new (ProtobufCAllocator *allocator
   rv->timer_tree = NULL;
   rv->first_idle = rv->last_idle = NULL;
   rv->base.has_idle = 0;
+  rv->first_prepare = rv->last_prepare = NULL;
+  rv->running_prepares = 0;
+  rv->prepares_removed = 0;
   rv->recycled_idles = NULL;
   rv->recycled_timeouts = NULL;
   rv->is_dispatching = 0;
@@ -264,6 +285,12 @@ protobuf_c_rpc_dispatch_free(ProtobufCRPCDispatch *dispatch)
       ProtobufCRPCDispatchIdle *i = d->recycled_idles;
       d->recycled_idles = i->next;
       FREE (i);
+    }
+  while (d->first_prepare != NULL)
+    {
+      ProtobufCRPCDispatchPrepare *p = d->first_prepare;
+      d->first_prepare = p->next;
+      FREE (p);
     }
   FREE (d->base.notifies_desired);
   FREE (d->base.changes);
@@ -661,6 +688,12 @@ protobuf_c_rpc_dispatch_dispatch (ProtobufCRPCDispatch *dispatch,
   if (d->timer_tree == NULL)
     d->base.has_timeout = 0;
 
+  /* Prepare functions run before every wait.  A caller that embeds the
+     dispatch in its own main-loop may not know to call
+     protobuf_c_rpc_dispatch_run_prepares(): do it here, which is just before
+     it reads what to wait for. */
+  protobuf_c_rpc_dispatch_run_prepares (dispatch);
+
   /* Finish reentrance guard. */
   d->is_dispatching = 0;
 }
@@ -705,6 +738,12 @@ protobuf_c_rpc_dispatch_run (ProtobufCRPCDispatch *dispatch)
   unsigned i;
   int timeout;
   ProtobufC_RPC_FDNotify *events;
+
+  /* Let the prepare functions deal with what the callbacks left behind.  They
+     may change the fds, the timers and the idle functions, so this comes
+     before we look at any of them. */
+  protobuf_c_rpc_dispatch_run_prepares (dispatch);
+
   if (dispatch->n_notifies_desired < 128)
     fds = alloca (sizeof (struct pollfd) * dispatch->n_notifies_desired);
   else
@@ -769,7 +808,18 @@ protobuf_c_rpc_dispatch_run (ProtobufCRPCDispatch *dispatch)
     if (fds[i].revents)
       {
         events[n_events].fd = fds[i].fd;
-        events[n_events].events = pollfd_events_to_events (fds[i].revents);
+        unsigned ev = pollfd_events_to_events (fds[i].revents);
+        unsigned want = dispatch->notifies_desired[i].events;
+
+        /* An error or a hangup must reach whoever watches the descriptor,
+           even if it only asked to be told about the other direction: poll
+           may return POLLERR alone, or POLLHUP for a descriptor that is
+           watched for writing only (a pipe nobody reads, a failed connect),
+           which would otherwise be dropped, and the callback would never find
+           out.  It learns what happened by trying. */
+        if ((fds[i].revents & (POLLERR|POLLHUP)) && (ev & want) == 0)
+          ev |= want;
+        events[n_events].events = ev;
 
         /* note that we may actually wind up with fewer events
            now that we actually call pollfd_events_to_events() */
@@ -893,6 +943,90 @@ protobuf_c_rpc_dispatch_add_idle (ProtobufCRPCDispatch *dispatch,
   rv->dispatch = d;
   dispatch->has_idle = 1;
   return rv;
+}
+
+ProtobufCRPCDispatchPrepare *
+protobuf_c_rpc_dispatch_add_prepare (ProtobufCRPCDispatch *dispatch,
+                                 ProtobufCRPCDispatchPrepareFunc func,
+                                 void               *func_data)
+{
+  RealDispatch *d = (RealDispatch *) dispatch;
+  ProtobufCAllocator *allocator = d->allocator;
+  ProtobufCRPCDispatchPrepare *rv = ALLOC (sizeof (ProtobufCRPCDispatchPrepare));
+  rv->dispatch = d;
+  rv->next = NULL;
+  rv->func = func;
+  rv->func_data = func_data;
+  if (d->last_prepare != NULL)
+    d->last_prepare->next = rv;
+  else
+    d->first_prepare = rv;
+  d->last_prepare = rv;
+  return rv;
+}
+
+/* Unlink and free the prepare functions that have been removed. */
+static void
+sweep_removed_prepares (RealDispatch *d)
+{
+  ProtobufCAllocator *allocator = d->allocator;
+  ProtobufCRPCDispatchPrepare **at = &d->first_prepare;
+  ProtobufCRPCDispatchPrepare *prev = NULL;
+  while (*at != NULL)
+    {
+      ProtobufCRPCDispatchPrepare *p = *at;
+      if (p->func == NULL)
+        {
+          *at = p->next;
+          if (d->last_prepare == p)
+            d->last_prepare = prev;
+          FREE (p);
+        }
+      else
+        {
+          prev = p;
+          at = &p->next;
+        }
+    }
+  d->prepares_removed = 0;
+}
+
+void
+protobuf_c_rpc_dispatch_remove_prepare (ProtobufCRPCDispatchPrepare *prepare)
+{
+  RealDispatch *d = prepare->dispatch;
+  prepare->func = NULL;
+  /* If the prepare functions are being run, the list is being walked:
+     unlink later. */
+  if (d->running_prepares)
+    d->prepares_removed = 1;
+  else
+    sweep_removed_prepares (d);
+}
+
+void
+protobuf_c_rpc_dispatch_run_prepares (ProtobufCRPCDispatch *dispatch)
+{
+  RealDispatch *d = (RealDispatch *) dispatch;
+  ProtobufCRPCDispatchPrepare *p;
+  ProtobufCRPCDispatchPrepare *last;
+
+  /* Run only the functions that exist now: one added by a prepare function
+     waits for the next iteration. */
+  last = d->last_prepare;
+  if (last == NULL)
+    return;
+  d->running_prepares = 1;
+  for (p = d->first_prepare; p != NULL; p = p->next)
+    {
+      if (p->func != NULL)
+        p->func (dispatch, p->func_data);
+      if (p == last)
+        break;
+    }
+  d->running_prepares = 0;
+  if (d->prepares_removed)
+    sweep_removed_prepares (d);
 }
 
 void
